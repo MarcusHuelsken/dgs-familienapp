@@ -19,6 +19,12 @@
 .result{padding:12px 15px;background:#f0f7f3;border-radius:12px;margin:14px 0}
 .form-error{color:#8a2435}.word-list{overflow-wrap:anywhere}
  .answer-input{font:inherit;width:100%;padding:10px;border:1px solid #9caeac;border-radius:8px}.letters{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.letters button{min-width:48px;font-size:22px}.cloze{font-size:clamp(21px,5vw,32px);overflow-wrap:anywhere}
+
+.firework{position:fixed;z-index:10;inset:0;pointer-events:none;display:grid;place-items:center}
+.spark{position:absolute;top:var(--top);left:var(--left);width:9px;height:9px;border-radius:50%;background:var(--spark);animation:burst 800ms var(--delay) ease-out both}
+.firework-icon{display:none;font-size:72px}
+@keyframes burst{0%{transform:scale(.2);opacity:0}15%{opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(.25);opacity:0}}
+@media(prefers-reduced-motion:reduce){.spark{display:none;animation:none}.firework-icon{display:block}}
 </style>
 <main>
 <header><button id="home">Übersicht</button><button id="parents">Für Eltern</button></header>
@@ -97,6 +103,24 @@ function wordFeedback(group,word){
   button(label,()=>{markWord(group,word,value);nextWord();},row);
  }
 }
+function celebrate(){
+ const effect=el('div','',panel,'firework');
+ effect.setAttribute('aria-hidden','true');
+ el('span','🎉',effect,'firework-icon');
+ const colors=['#e99b12','#d14376','#2d9a62','#426cdd','#a84ed1'];
+ for(const [burst,[left,top]] of [[36,32],[66,42],[49,57]].entries()){
+  for(let i=0;i<12;i++){
+   const spark=el('span','',effect,'spark');
+   const angle=i*Math.PI/6;
+   const radius=i%2===0?78:51;
+   for(const [key,value] of Object.entries({
+    left:left+'%',top:top+'%',dx:Math.cos(angle)*radius+'px',
+    dy:Math.sin(angle)*radius+'px',delay:burst*110+'ms',spark:colors[(i+burst)%colors.length]
+   }))spark.style.setProperty('--'+key,value);
+  }
+ }
+ setTimeout(()=>effect.remove(),1100);
+}
 function textExercise(group,word,prompt){
  const form=el('form','');
  const field=el('input','',el('label',prompt,form),'answer-input');
@@ -110,6 +134,7 @@ function textExercise(group,word,prompt){
   field.disabled=true;submit.disabled=true;
   const correct=answer===word;
   markWord(group,word,correct?'solo':'repeat');
+  if(correct)celebrate();
   el('p',correct?'Richtig!':'So wird das Wort geschrieben: '+word,form,'result').setAttribute('role','status');
   button('Weiter',nextWord,form,'primary').focus();
  };
@@ -133,6 +158,7 @@ function letterExercise(group,word,mask){
   check.disabled=true;
   [...letters.querySelectorAll('button'),...controls.querySelectorAll('button')].forEach(b=>b.disabled=true);
   markWord(group,word,correct?'solo':'repeat');
+  if(correct)celebrate();
   el('p',correct?'Richtig!':'So wird das Wort geschrieben: '+word,panel,'result').setAttribute('role','status');
   button('Weiter',nextWord,panel,'primary').focus();
  },controls,'primary');
@@ -548,6 +574,7 @@ function parents(){
 open('home');
 </script>
 </html>
+
 
 
 

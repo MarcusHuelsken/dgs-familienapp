@@ -74,8 +74,12 @@ function chooseWordMode(){
  }
  button('Zu den Gruppen',()=>open('words'),el('nav',''));
 }
+function normalizeMask(mask){
+ return mask.includes('_')?mask:mask.replace(/x+/g,part=>'_'.repeat(part.length));
+}
 function maskFor(group,word){
- return group.cards?.find(c=>c.word===word)?.mask||(word==='plötzlich'?'plöxxlich':word==='Plötzlich'?'Plöxxlich':'');
+ const mask=group.cards?.find(c=>c.word===word)?.mask;
+ return mask?normalizeMask(mask):(word==='plötzlich'?'plö__lich':word==='Plötzlich'?'Plö__lich':'');
 }
 function markWord(group,word,result){
  if(wordMode==='merken'){
@@ -112,14 +116,14 @@ function textExercise(group,word,prompt){
 }
 function letterExercise(group,word,mask){
  // The entered mask has the same prefix and suffix as the word.
- const [,prefix,gap,suffix]=mask.match(/^(.*?)(x+)(.*)$/);
+ const [,prefix,gap,suffix]=mask.match(/^(.*?)(_+)(.*)$/);
  const answer=Array.from(word).slice(Array.from(prefix).length,Array.from(prefix+gap).length);
  const display=el('p',mask,panel,'word');
  display.setAttribute('aria-live','polite');
  const letters=el('div','',panel,'letters');
  const picked=[];
  const choices=[...new Set([...answer,'s','k','z','t'])].sort((a,b)=>a.localeCompare(b,'de'));
- const draw=()=>{display.textContent=prefix+picked.join('')+'x'.repeat(answer.length-picked.length)+suffix;};
+ const draw=()=>{display.textContent=prefix+picked.join('')+'_'.repeat(answer.length-picked.length)+suffix;};
  choices.forEach(letter=>button(letter,()=>{if(picked.length<answer.length){picked.push(letter);draw();}},letters));
  const controls=el('div','',panel,'row');
  button('Letzten Buchstaben löschen',()=>{picked.pop();draw();},controls);
@@ -161,8 +165,8 @@ function wordsView(){
 function groupEditor(){
  title('Lernwortgruppen');
  el('p','Gebt pro Zeile ein Lernwort ein. Optional könnt ihr einen Lückensatz und eine schwierige Stelle hinzufügen.');
- el('p','Beispiel: plötzlich | Es regnet ___. | plöxxlich');
- el('small','Für nur eine schwierige Stelle lasst ihr das Feld für den Satz leer: plötzlich | | plöxxlich. Jedes x steht für einen fehlenden Buchstaben.');
+ el('p','Beispiel: plötzlich | Es regnet ___. | plö__lich');
+ el('small','Für nur eine schwierige Stelle lasst ihr das Feld für den Satz leer: plötzlich | | plö__lich. Jeder Unterstrich steht für einen fehlenden Buchstaben.');
  for(const [i,group] of data.groups.entries()){
   const box=el('fieldset','');
   el('legend','Gruppe '+(i+1),box);
@@ -181,7 +185,7 @@ function groupForm(parent,index){
  area.rows=10;
  if(index!==null)area.value=data.groups[index].words.map(word=>{
   const card=data.groups[index].cards?.find(c=>c.word===word);
-  return card&&(card.sentence||card.mask)?[word,card.sentence,card.mask].join(' | '):word;
+  return card&&(card.sentence||card.mask)?[word,card.sentence,normalizeMask(card.mask||'')].join(' | '):word;
  }).join('\n');
  const error=el('p','',parent);
  error.className='form-error';
@@ -189,7 +193,7 @@ function groupForm(parent,index){
  button('Gruppe speichern',()=>{
   const rows=area.value.split(/\r?\n/).map(line=>line.trim().normalize('NFC')).filter(Boolean);
   const parts=rows.map(line=>line.split('|').map(field=>field.trim()));
-  const cards=parts.map(([word,sentence='',mask=''])=>({word,sentence,mask}));
+  const cards=parts.map(([word,sentence='',mask=''])=>({word,sentence,mask:normalizeMask(mask)}));
   const words=cards.map(card=>card.word);
   if(words.length!==10||new Set(words.map(w=>w.toLocaleLowerCase('de'))).size!==10||words.some(w=>!w||/\s/.test(w))||parts.some(p=>p.length>3)){
    error.textContent='Bitte genau zehn verschiedene Wörter eingeben, eines pro Zeile.';
@@ -201,9 +205,9 @@ function groupForm(parent,index){
     return;
    }
    if(mask){
-    const valid=Array.from(mask).length===Array.from(word).length&&[...mask.matchAll(/x+/g)].length===1&&Array.from(mask).every((letter,i)=>letter==='x'||letter===Array.from(word)[i]);
+    const valid=Array.from(mask).length===Array.from(word).length&&[...mask.matchAll(/_+/g)].length===1&&Array.from(mask).every((letter,i)=>letter==='_'||letter===Array.from(word)[i]);
     if(!valid){
-     error.textContent='Bei „'+word+'“ muss die schwierige Stelle aus zusammenhängenden x bestehen, eines je Buchstabe.';
+     error.textContent='Bei „'+word+'“ muss die schwierige Stelle aus zusammenhängenden Unterstrichen bestehen, eines je Buchstabe.';
      return;
     }
    }
@@ -544,5 +548,6 @@ function parents(){
 open('home');
 </script>
 </html>
+
 
 

@@ -5,6 +5,12 @@
 <title>Denkaufgaben und Dino-Mission</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#edf0f3;color:#202d39;font:17px/1.5 system-ui,sans-serif}body.dino{background:#e4f4e8;color:#183b34}main{max-width:680px;margin:auto;padding:24px 16px}header,nav,.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}header{justify-content:space-between;margin-bottom:15px}article{background:white;border:1px solid #cdd8d5;border-radius:24px;padding:clamp(18px,5vw,40px);box-shadow:0 12px 30px #20323212}h1{font-size:clamp(27px,6vw,40px);line-height:1.12;margin:12px 0}p{margin:12px 0}button,textarea,select{font:inherit}button{cursor:pointer;min-height:48px;border:1px solid #9caeac;border-radius:12px;background:#fff;color:inherit;padding:9px 15px;font-weight:600}button.primary,button[aria-pressed=true]{background:#274450;color:white;border-color:transparent}.dino button.primary,.dino button[aria-pressed=true]{background:#216451}button:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #8d5100;outline-offset:3px}.choices{margin:18px 0}.choices button{min-width:64px}.symbols{font-size:32px;letter-spacing:.25em}.grid{display:grid;grid-template-columns:repeat(3,64px);gap:6px;margin:16px 0}.grid button{height:56px;padding:0;font-size:25px}.grid .start{box-shadow:inset 0 0 0 2px #829e96}nav{margin-top:26px}nav .primary{margin-left:auto}progress{width:100%;accent-color:#286650;height:12px}.pet{font-size:64px;line-height:1;float:right;margin:0 0 10px 12px}small{display:block;color:#47595c}label{display:block;margin:10px 0}textarea{width:100%;min-height:85px;border:1px solid #9caeac;border-radius:8px;padding:8px}fieldset{margin:16px 0;border:1px solid #cdd8d5;border-radius:12px;padding:14px}select{max-width:100%;padding:6px}.report{min-height:160px;margin-top:12px}button:disabled{opacity:.5;cursor:default}
+ .picture-strip{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:16px 0}
+.picture{display:inline-grid;place-items:center;position:relative;min-width:clamp(38px,10vw,60px);height:clamp(44px,11vw,64px);border-radius:12px;background:#eaf6ed;font-size:clamp(23px,7vw,38px)}
+.picture.gone{opacity:.55}.picture.gone::after{content:'';position:absolute;width:85%;height:3px;background:#7c2c3a;transform:rotate(-45deg)}
+.picture-choices button{font-size:clamp(26px,8vw,42px);min-width:62px}
+.picture-strip .arrow{background:transparent;min-width:24px}
+.memory-picked{min-height:56px}.dino .grid button{font-size:31px}
 </style>
 <main>
 <header><button id="home">Übersicht</button><button id="parents">Für Eltern</button></header>
@@ -22,18 +28,22 @@ const screens = {
  ['Merkfolge','Hör zu. Sag die Wörter in derselben Reihenfolge.','Jetzt liest dir jemand drei Wörter vor.',null,'Ball – Baum – Fisch']
  ],
  B:[
- ['Die Eierreihe','Was kommt als Nächstes?','○ □ △ ○ □ ?', ['□','○','△'],'△'],
- ['Der Futtervorrat','Wie viele bleiben übrig?','8 Beeren liegen da. Ein Dino frisst 3.', ['4','5','6','7'],'5'],
- ['Das falsche Nest','Was passt am wenigsten dazu? Sag, warum.','', ['Apfel','Birne','Schuh','Banane'],'Schuh'],
- ['Die Schlafplätze','Wer sitzt in der Mitte?','Pippa sitzt vor Nino. Taps sitzt hinter Nino.', ['Pippa','Nino','Taps'],'Nino'],
- ['Der Weg zur Höhle','Starte beim Kreis. Zeig, wo du ankommst.','2 nach unten, 1 nach links.',null,'unten Mitte'],
- ['Die Flüsterpost','Hör zu. Sag die Wörter in derselben Reihenfolge.','Jetzt liest dir jemand drei Wörter vor.',null,'Buch – Hut – Hund']
+ ['Die Eierreihe','Welches Bild kommt als Nächstes?','',null,'🥚'],
+ ['Der Futtervorrat','Wie viele Beeren sind noch da?','',null,'5'],
+ ['Das falsche Nest','Welches Bild passt am wenigsten dazu?','',null,'👟'],
+ ['Die Schlafplätze','Wer gehört in die Mitte?','',null,'🦕'],
+ ['Der Weg zur Höhle','Starte beim Dino. Folge den Pfeilen und tippe auf das Zielfeld.','',null,'unten Mitte'],
+ ['Dinos auf Besuch','Merk dir die Reihenfolge. Tippe danach die Bilder in derselben Reihenfolge an.','',null,'🐣 🐢 🦕']
  ]
 };
 const key='mats-denkcheck-v1';
 const fresh=()=>({A:{i:0,a:{},notes:{},fun:''},B:{i:0,a:{},notes:{},fun:''}});
 let data=fresh(), persistent=true;
 try{const saved=localStorage.getItem(key);if(saved)data=JSON.parse(saved);}catch{persistent=false;}
+if(data.B.edition!==2){
+ data.B={i:0,a:{},notes:{},fun:'',edition:2};
+}
+let memoryOpen=false;
 function save(){try{localStorage.setItem(key,JSON.stringify(data));}catch{persistent=false;}}
 const panel=document.querySelector('#screen');
 let form='A', view='home';
@@ -95,8 +105,9 @@ function render(){
  progress.max=6;progress.value=i+1;
  el('small','Aufgabe '+(i+1)+' von 6');
  el('p',prompt);
- if(body)el('p',body,panel,i===0?'symbols':'');
- if(choices||i===4){
+ if(form==='B')dinoPuzzle(i,round);
+ else if(body)el('p',body,panel,i===0?'symbols':'');
+ if(form==='A'&&(choices||i===4)){
   const group=el('div','',panel,i===4?'grid':'row choices');
   (choices||locations).forEach((answer,index)=>{
    const start=i===4&&index===(form==='A'?0:2);
@@ -113,11 +124,86 @@ function render(){
 function mark(group,selected){
  for(const b of group.querySelectorAll('button'))b.setAttribute('aria-pressed',String(b===selected));
 }
-function move(i){data[form].i=i;save();open('round');}
+function move(i){memoryOpen=false;data[form].i=i;save();open('round');}
+const pictureNames={'🥚':'Ei','🐣':'Küken','🦕':'Langhals-Dino','🦖':'T-Rex','🐢':'Schildkröte','👟':'Schuh','🥬':'Blatt','🫐':'Beeren','⬇':'Pfeil nach unten','⬅':'Pfeil nach links','→':'Pfeil nach rechts','?':'fehlendes Bild'};
+function strip(pictures,crossed=0){
+ const row=el('div','',panel,'picture-strip');
+ pictures.forEach((picture,index)=>{
+  const gone=index>=pictures.length-crossed;
+  const tile=el('span',picture,row,'picture'+(gone?' gone':'')+(['→','⬇','⬅'].includes(picture)?' arrow':''));
+  tile.setAttribute('role','img');
+  tile.setAttribute('aria-label',(pictureNames[picture]||picture)+(gone?', durchgestrichen':''));
+ });
+ return row;
+}
+function pictureChoices(values,i,round,cls='row choices picture-choices'){
+ const group=el('div','',panel,cls);
+ values.forEach(value=>{
+  const picture=i===4?(value==='oben rechts'?'🦕':'·'):value;
+  const b=button(picture,()=>{round.a[i]=value;save();mark(group,b);},group,i===4&&value==='oben rechts'?'start':'');
+  b.setAttribute('aria-label',i===4?value+(value==='oben rechts'?', Start beim Dino':''):(pictureNames[value]||value));
+  b.setAttribute('aria-pressed',String(round.a[i]===value));
+ });
+}
+function dinoPuzzle(i,round){
+ switch(i){
+  case 0:
+   strip(['🥚','🐣','🐣','🥚','🐣','🐣','?']);
+   pictureChoices(['🐣','🥚','🦕'],i,round);
+   break;
+  case 1:
+   strip(Array(8).fill('🫐'),3);
+   pictureChoices(['4','5','6','7'],i,round);
+   break;
+  case 2:
+   pictureChoices(['🦕','👟','🦖','🐢'],i,round);
+   break;
+  case 3:
+   strip(['🦖','→','🦕']);
+   strip(['🦕','→','🐢']);
+   strip(['🦖','?','🐢']);
+   pictureChoices(['🐢','🦕','🦖'],i,round);
+   break;
+  case 4:
+   strip(['⬇','⬇','⬅']);
+   pictureChoices(locations,i,round,'grid');
+   break;
+  case 5:
+   if(!memoryOpen&&!round.a[i]){
+    strip(['🐣','🐢','🦕']);
+    button('Bilder zudecken',()=>{memoryOpen=true;render();panel.querySelector('.memory-picked').focus();},panel,'primary');
+    break;
+   }
+   const selection=el('p',round.a[i]||'Noch kein Bild gewählt',panel,'symbols memory-picked');
+   selection.tabIndex=-1;
+   selection.setAttribute('aria-live','polite');
+   const group=el('div','',panel,'row choices picture-choices');
+   const update=()=>{
+    const picked=(round.a[i]||'').split(' ').filter(Boolean);
+    selection.textContent=picked.join(' ')||'Noch kein Bild gewählt';
+    group.querySelectorAll('button').forEach(b=>{
+     b.setAttribute('aria-pressed',String(picked.includes(b.textContent)));
+    });
+   };
+   for(const picture of ['🦕','🐣','🐢']){
+    const b=button(picture,()=>{
+     const picked=(round.a[i]||'').split(' ').filter(Boolean);
+     if(picked.includes(picture)||picked.length===3)return;
+     round.a[i]=[...picked,picture].join(' ');
+     save();update();
+    },group);
+    b.setAttribute('aria-label',pictureNames[picture]);
+   }
+   button('Auswahl leeren',()=>{delete round.a[i];save();update();});
+   update();
+   break;
+ }
+}
 function parents(){
  title('Beobachtungsbogen');
  el('p','Je eine Runde an zwei Tagen, etwa zehn Minuten ohne Stoppuhr. Lest alles vor. Das Kind darf zeigen, sprechen, zeichnen oder pausieren.');
- el('p','Bei Aufgabe 6 lest ihr die drei Wörter mit etwa einer Sekunde Abstand vor. Das Kind sagt sie direkt nach. Haltet Wiederholungen und Tipps fest. Bei Aufgabe 3 zählt auch eine andere Antwort mit schlüssiger Begründung.');
+ el('p','In der sachlichen Runde lest ihr bei Aufgabe 6 die Wörter einzeln vor. In der Dino-Runde schaut sich das Kind drei Bilder an und tippt sie nach dem Zudecken in derselben Reihenfolge an. Haltet Wiederholungen und Tipps fest.');
+ el('p','Fragt beim Sortierrätsel erst nach der Auswahl nach der Begründung. Eine schlüssige andere Antwort zählt ebenfalls.');
  el('small','Die Aufgaben haben keine Altersnorm. Aus den Ergebnissen lässt sich kein IQ-Wert ableiten.');
  if(!persistent)el('p','Dieser Browser speichert hier keine Eingaben dauerhaft. Kopiert den Bericht vor dem Schließen.');
  const summary=()=>{

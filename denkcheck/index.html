@@ -11,6 +11,13 @@
 .picture-choices button{font-size:clamp(26px,8vw,42px);min-width:62px}
 .picture-strip .arrow{background:transparent;min-width:24px}
 .memory-picked{min-height:56px}.dino .grid button{font-size:31px}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:14px;margin:22px 0}
+.tile{text-align:left;min-height:116px;background:#f0f7f3;border-color:#9ab8ab}
+.tile span{display:block;font-size:23px}.tile small{font-weight:400;margin-top:3px}
+.word{font-size:clamp(28px,8vw,53px);overflow-wrap:anywhere;text-align:center;margin:24px 0}
+.result{padding:12px 15px;background:#f0f7f3;border-radius:12px;margin:14px 0}
+.form-error{color:#8a2435}.word-list{overflow-wrap:anywhere}
 </style>
 <main>
 <header><button id="home">Übersicht</button><button id="parents">Für Eltern</button></header>
@@ -42,6 +49,142 @@ let data=fresh(), persistent=true;
 try{const saved=localStorage.getItem(key);if(saved)data=JSON.parse(saved);}catch{persistent=false;}
 if(data.B.edition!==2){
  data.B={i:0,a:{},notes:{},fun:'',edition:2};
+}
+data.groups ??=[];
+const activities=[
+ {label:'🦕 Denkcheck',hint:'Denkaufgaben und Dino-Mission',view:'check'},
+ {label:'📚 Lernwörter',hint:'Wörter in Zehnergruppen üben',view:'words'}
+];
+let groupIndex=0, wordIndex=0, wordShown=true;
+function wordsView(){
+ title('Lernwörter');
+ if(!data.groups.length)el('p','Legt zuerst im Elternbereich eine Gruppe mit zehn Wörtern an.');
+ const list=el('div','',panel,'tiles');
+ data.groups.forEach((group,i)=>{
+  const b=button('',()=>{groupIndex=i;wordIndex=0;wordShown=true;open('practice');},list,'tile');
+  el('span','Gruppe '+(i+1),b);
+  el('small',Object.keys(group.results).length+' von 10 schon geübt',b);
+ });
+ button('Gruppen verwalten',()=>open('groups'));
+}
+function groupEditor(){
+ title('Lernwortgruppen');
+ el('p','Gebt für jede Gruppe zehn verschiedene Wörter ein, jeweils eines pro Zeile.');
+ for(const [i,group] of data.groups.entries()){
+  const box=el('fieldset','');
+  el('legend','Gruppe '+(i+1),box);
+  el('p',group.words.join(' · '),box,'word-list');
+  const editor=el('details','',box);
+  el('summary','Gruppe bearbeiten',editor);
+  groupForm(editor,i);
+ }
+ const box=el('fieldset','');
+ el('legend','Gruppe '+(data.groups.length+1)+' hinzufügen',box);
+ groupForm(box,null);
+ button('Zu Lernwörter',()=>open('words'),el('nav',''));
+}
+function groupForm(parent,index){
+ const area=el('textarea','',el('label','Zehn Lernwörter',parent));
+ area.rows=10;
+ if(index!==null)area.value=data.groups[index].words.join('\n');
+ const error=el('p','',parent);
+ error.className='form-error';
+ error.setAttribute('role','status');
+ button('Gruppe speichern',()=>{
+  const words=area.value.split(/\r?\n/).map(word=>word.trim().normalize('NFC')).filter(Boolean);
+  if(words.length!==10||new Set(words.map(w=>w.toLocaleLowerCase('de'))).size!==10||words.some(w=>/\s/.test(w))){
+   error.textContent='Bitte zehn verschiedene einzelne Wörter eingeben.';
+   return;
+  }
+  const results=data.groups[index]?.results||{};
+  const group={words,results:Object.fromEntries(words.filter(w=>Object.hasOwn(results,w)).map(w=>[w,results[w]]))};
+  if(index===null)data.groups.push(group);
+  else data.groups[index]=group;
+  save();open('groups');
+ },parent,'primary');
+}
+function practice(){
+ const group=data.groups[groupIndex];
+ if(!group){open('words');return;}
+ title('Gruppe '+(groupIndex+1));
+ if(wordIndex===group.words.length){
+  el('p','Geschafft! Ihr könnt die Gruppe wiederholen oder eine andere wählen.');
+  button('Zu den Gruppen',()=>open('words'),panel,'primary');
+  return;
+ }
+ const word=group.words[wordIndex];
+ el('small','Wort '+(wordIndex+1)+' von 10');
+ el('p',wordShown?'Schau dir das Wort an.':'Schreib das verdeckte Wort aus dem Kopf auf Papier.');
+ el('p',wordShown?word:'•••',panel,'word');
+ if(wordShown){
+  button('Wort zudecken',()=>{wordShown=false;open('practice');},panel,'primary');
+ }else{
+  button('Wort zum Vergleichen zeigen',event=>{event.currentTarget.disabled=true;panel.querySelector('.word').textContent=word;
+   el('p','Wie hat es beim Schreiben geklappt?');
+   const row=el('div','',panel,'row');
+   for(const [value,label] of [['solo','Selbst geschafft'],['help','Mit Hilfe'],['repeat','Noch mal üben']]){
+    button(label,()=>{Object.defineProperty(group.results,word,{value,enumerable:true,writable:true,configurable:true});save();nextWord();},row);
+   }
+  },panel,'primary');
+ }
+ button('Überspringen',nextWord,el('nav',''));
+}
+function nextWord(){wordIndex++;wordShown=true;open('practice');}
+function profile(){
+ title('Lernprofil');
+ el('p','Die Auswertung nutzt eure Beobachtungen und die jeweils letzte Einschätzung pro Lernwort.');
+ const report=['Lernprofil'];
+ const easy=[], support=[], openTasks=[];
+ for(const f of ['A','B']){
+  report.push('',mode[f]);
+  for(const [i,[name]] of screens[f].entries()){
+   const status=data[f].notes[i];
+   const label=(f==='B'?'Dino: ':'')+name;
+   if(status==='Selbst gelöst')easy.push(label);
+   if(status==='Nach Hilfe')support.push(label);
+   if(status==='Offen oder übersprungen')openTasks.push(label);
+   const answer=data[f].a[i];
+   report.push(name+' – '+(status||'ohne Einschätzung')+(answer?' · Antwort: '+answer:''));
+  }
+  report.push('Lieblingsrätsel: '+(data[f].fun||'offen'));
+ }
+ const words={solo:[],help:[],repeat:[]};
+ data.groups.forEach((group,i)=>{
+  report.push('','Gruppe '+(i+1));
+  for(const w of group.words){
+   const status=Object.hasOwn(group.results,w)?group.results[w]:'';
+   if(status)words[status].push(w);
+   report.push(w+' – '+({solo:'selbst geschafft',help:'mit Hilfe',repeat:'noch mal üben'}[status]||'noch offen'));
+  }
+ });
+ const observations=el('div','',panel,'result');
+ for(const [label,items] of [['Selbst gelöst',easy],['Mit Hilfe gelöst',support],['Offene oder übersprungene Rätsel',openTasks]]){
+  if(items.length)el('p',label+' · '+items.join(', '),observations);
+ }
+ if(!observations.childElementCount)el('p','Für den Denkcheck ist noch keine Einschätzung eingetragen.',observations);
+ el('p','Lernwörter · '+words.solo.length+' selbst geschafft, '+words.help.length+' mit Hilfe, '+words.repeat.length+' zum Wiederholen.',observations);
+ const favorite=data.B.fun||data.A.fun;
+ const practiceWords=[...new Set([...words.repeat,...words.help])].slice(0,3);
+ const plan=[];
+ if(favorite)plan.push('Mit „'+favorite+'“ einsteigen.');
+ else if(easy.length)plan.push('Mit einem kurzen Rätsel wie „'+easy[0]+'“ einsteigen.');
+ if(support.length)plan.push('Eine ähnliche Aufgabe zu „'+support[0]+'“ gemeinsam lösen. Beim nächsten Versuch weniger Hilfe geben.');
+ if(practiceWords.length)plan.push('Diese Wörter anschauen, zudecken und einmal aus dem Kopf schreiben: '+practiceWords.join(', ')+'.');
+ if(!plan.length)plan.push('Spielt erst eine kurze Runde und haltet fest, was selbst geklappt hat und wo ein Tipp geholfen hat.');
+ el('h2','Vorschlag für fünf Minuten');
+ plan.forEach(line=>el('p',line));
+ report.push('','Beobachtungen: '+(data.comment||''),'','Trainingsvorschlag',...plan);
+ const area=el('textarea','',el('label','Lernprofil zum Teilen'), 'report');
+ area.readOnly=true;
+ area.value=report.join('\n');
+ const copyStatus=el('small','');
+ copyStatus.setAttribute('role','status');
+ button('Lernprofil kopieren',async()=>{
+  try{await navigator.clipboard.writeText(area.value);copyStatus.textContent='Lernprofil kopiert.';}
+  catch{area.focus();area.select();area.setSelectionRange(0,area.value.length);copyStatus.textContent='Der Text ist markiert. Wähle im Browser „Kopieren“.';}
+ });
+ el('p','Fügt das Lernprofil in euren Chat ein, damit ich das Training anhand eurer Beobachtungen anpassen kann.');
+ button('Zum Elternbereich',()=>open('parents'),el('nav',''));
 }
 let memoryOpen=false;
 function save(){try{localStorage.setItem(key,JSON.stringify(data));}catch{persistent=false;}}
@@ -75,6 +218,20 @@ function render(){
  panel.replaceChildren();
  document.body.classList.toggle('dino',view==='round'&&form==='B');
  if(view==='home'){
+  title('Was möchtest du machen?');
+  const tiles=el('div','',panel,'tiles');
+  for(const activity of activities){
+   const b=button('',()=>open(activity.view),tiles,'tile');
+   el('span',activity.label,b);
+   el('small',activity.hint,b);
+  }
+  return;
+ }
+ if(view==='words'){wordsView();return;}
+ if(view==='groups'){groupEditor();return;}
+ if(view==='practice'){practice();return;}
+ if(view==='profile'){profile();return;}
+ if(view==='check'){
   title('Welches Rätsel willst du spielen?');
   el('p','Du kannst zeigen, sprechen oder tippen. Eine Pause geht jederzeit.');
   for(const f of ['A','B']){
@@ -200,7 +357,11 @@ function dinoPuzzle(i,round){
  }
 }
 function parents(){
- title('Beobachtungsbogen');
+ title('Für Eltern');
+ const actions=el('div','',panel,'row');
+ button('Lernprofil erstellen',()=>open('profile'),actions,'primary');
+ button('Lernwortgruppen verwalten',()=>open('groups'),actions);
+ el('h2','Beobachtungsbogen');
  el('p','Je eine Runde an zwei Tagen, etwa zehn Minuten ohne Stoppuhr. Lest alles vor. Das Kind darf zeigen, sprechen, zeichnen oder pausieren.');
  el('p','In der sachlichen Runde lest ihr bei Aufgabe 6 die Wörter einzeln vor. In der Dino-Runde schaut sich das Kind drei Bilder an und tippt sie nach dem Zudecken in derselben Reihenfolge an. Haltet Wiederholungen und Tipps fest.');
  el('p','Fragt beim Sortierrätsel erst nach der Auswahl nach der Begründung. Eine schlüssige andere Antwort zählt ebenfalls.');
@@ -239,8 +400,9 @@ function parents(){
  report.readOnly=true;
  report.value=summary();
  button('Zusammenfassung markieren',()=>{report.focus();report.select();report.setSelectionRange(0,report.value.length);});
- button('Zurück zur Runde',()=>open('round'),el('nav',''),'primary');
+ button('Zum Denkcheck',()=>open('check'),el('nav',''),'primary');
 }
 open('home');
 </script>
 </html>
+

@@ -18,6 +18,7 @@
 .word{font-size:clamp(28px,8vw,53px);overflow-wrap:anywhere;text-align:center;margin:24px 0}
 .result{padding:12px 15px;background:#f0f7f3;border-radius:12px;margin:14px 0}
 .form-error{color:#8a2435}.word-list{overflow-wrap:anywhere}
+ .answer-input{font:inherit;width:100%;padding:10px;border:1px solid #9caeac;border-radius:8px}.letters{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.letters button{min-width:48px;font-size:22px}.cloze{font-size:clamp(21px,5vw,32px);overflow-wrap:anywhere}
 </style>
 <main>
 <header><button id="home">Übersicht</button><button id="parents">Für Eltern</button></header>
@@ -55,21 +56,113 @@ const activities=[
  {label:'🦕 Denkcheck',hint:'Denkaufgaben und Dino-Mission',view:'check'},
  {label:'📚 Lernwörter',hint:'Wörter in Zehnergruppen üben',view:'words'}
 ];
-let groupIndex=0, wordIndex=0, wordShown=true;
+const wordModes={
+ lesen:'Lesen', luecke:'Lückentext', stellen:'Schwierige Stellen', diktat:'Diktat', merken:'Anschauen und zudecken'
+};
+let groupIndex=0, wordIndex=0, wordShown=true, wordMode='lesen';
+let exerciseWords=[];
+function chooseWordMode(){
+ const group=data.groups[groupIndex];
+ title('Gruppe '+(groupIndex+1));
+ const tiles=el('div','',panel,'tiles');
+ const hints={lesen:'Wörter laut lesen',luecke:'Fehlendes Wort im Satz ergänzen',stellen:'Fehlende Buchstaben antippen',diktat:'Hören, schreiben und prüfen',merken:'Aus dem Kopf auf Papier schreiben'};
+ for(const [id,label] of Object.entries(wordModes)){
+  const available=group.words.filter(word=>id==='luecke'?group.cards?.find(c=>c.word===word)?.sentence:id==='stellen'?maskFor(group,word):true);
+  const tile=button('',()=>{wordMode=id;exerciseWords=available;wordIndex=0;wordShown=true;open('practice');},tiles,'tile');
+  el('span',label,tile);el('small',available.length?hints[id]:id==='luecke'?'Erst einen Lückensatz im Elternbereich eintragen':'Erst eine schwierige Stelle eintragen',tile);
+  tile.disabled=!available.length;
+ }
+ button('Zu den Gruppen',()=>open('words'),el('nav',''));
+}
+function maskFor(group,word){
+ return group.cards?.find(c=>c.word===word)?.mask||(word==='plötzlich'?'plöxxlich':word==='Plötzlich'?'Plöxxlich':'');
+}
+function markWord(group,word,result){
+ if(wordMode==='merken'){
+  Object.defineProperty(group.results,word,{value:result,enumerable:true,writable:true,configurable:true});
+ }else{
+  group.byMode??={};
+  group.byMode[wordMode]??={};
+  Object.defineProperty(group.byMode[wordMode],word,{value:result,enumerable:true,writable:true,configurable:true});
+ }
+ save();
+}
+function wordFeedback(group,word){
+ const row=el('div','',panel,'row');
+ for(const [value,label] of [['solo','Selbst geschafft'],['help','Mit Hilfe'],['repeat','Noch mal üben']]){
+  button(label,()=>{markWord(group,word,value);nextWord();},row);
+ }
+}
+function textExercise(group,word,prompt){
+ const form=el('form','');
+ const field=el('input','',el('label',prompt,form),'answer-input');
+ field.type='text';field.autocapitalize='off';field.autocomplete='off';field.spellcheck=false;field.setAttribute('autocorrect','off');
+ const submit=el('button','Prüfen',form,'primary');
+ submit.type='submit';
+ form.onsubmit=(event)=>{
+  event.preventDefault();
+  const answer=field.value.trim().normalize('NFC');
+  if(!answer||submit.disabled)return;
+  field.disabled=true;submit.disabled=true;
+  const correct=answer===word;
+  markWord(group,word,correct?'solo':'repeat');
+  el('p',correct?'Richtig!':'So wird das Wort geschrieben: '+word,form,'result').setAttribute('role','status');
+  button('Weiter',nextWord,form,'primary').focus();
+ };
+}
+function letterExercise(group,word,mask){
+ // The entered mask has the same prefix and suffix as the word.
+ const [,prefix,gap,suffix]=mask.match(/^(.*?)(x+)(.*)$/);
+ const answer=Array.from(word).slice(Array.from(prefix).length,Array.from(prefix+gap).length);
+ const display=el('p',mask,panel,'word');
+ display.setAttribute('aria-live','polite');
+ const letters=el('div','',panel,'letters');
+ const picked=[];
+ const choices=[...new Set([...answer,'s','k','z','t'])].sort((a,b)=>a.localeCompare(b,'de'));
+ const draw=()=>{display.textContent=prefix+picked.join('')+'x'.repeat(answer.length-picked.length)+suffix;};
+ choices.forEach(letter=>button(letter,()=>{if(picked.length<answer.length){picked.push(letter);draw();}},letters));
+ const controls=el('div','',panel,'row');
+ button('Letzten Buchstaben löschen',()=>{picked.pop();draw();},controls);
+ const check=button('Prüfen',()=>{
+  if(picked.length!==answer.length)return;
+  const correct=picked.join('')===answer.join('');
+  check.disabled=true;
+  [...letters.querySelectorAll('button'),...controls.querySelectorAll('button')].forEach(b=>b.disabled=true);
+  markWord(group,word,correct?'solo':'repeat');
+  el('p',correct?'Richtig!':'So wird das Wort geschrieben: '+word,panel,'result').setAttribute('role','status');
+  button('Weiter',nextWord,panel,'primary').focus();
+ },controls,'primary');
+}
+function dictation(word){
+ el('p','Hör genau hin und schreib das Wort.');
+ if('speechSynthesis' in window&&typeof SpeechSynthesisUtterance==='function'){
+  button('🔊 Wort anhören',()=>{
+   const voice=new SpeechSynthesisUtterance(word);
+   voice.lang='de-DE';voice.rate=.8;
+   window.speechSynthesis.cancel();window.speechSynthesis.speak(voice);
+  });
+ }
+ const manual=el('details','');
+ el('summary','Wort für Vorlesende zeigen',manual);
+ el('p',word,manual);
+}
+
 function wordsView(){
  title('Lernwörter');
  if(!data.groups.length)el('p','Legt zuerst im Elternbereich eine Gruppe mit zehn Wörtern an.');
  const list=el('div','',panel,'tiles');
  data.groups.forEach((group,i)=>{
-  const b=button('',()=>{groupIndex=i;wordIndex=0;wordShown=true;open('practice');},list,'tile');
+  const b=button('',()=>{groupIndex=i;open('wordModes');},list,'tile');
   el('span','Gruppe '+(i+1),b);
-  el('small',Object.keys(group.results).length+' von 10 schon geübt',b);
+  el('small',new Set([...Object.keys(group.results),...Object.values(group.byMode||{}).flatMap(Object.keys)]).size+' von 10 schon geübt',b);
  });
  button('Gruppen verwalten',()=>open('groups'));
 }
 function groupEditor(){
  title('Lernwortgruppen');
- el('p','Gebt für jede Gruppe zehn verschiedene Wörter ein, jeweils eines pro Zeile.');
+ el('p','Gebt pro Zeile ein Lernwort ein. Optional könnt ihr einen Lückensatz und eine schwierige Stelle hinzufügen.');
+ el('p','Beispiel: plötzlich | Es regnet ___. | plöxxlich');
+ el('small','Für nur eine schwierige Stelle lasst ihr das Feld für den Satz leer: plötzlich | | plöxxlich. Jedes x steht für einen fehlenden Buchstaben.');
  for(const [i,group] of data.groups.entries()){
   const box=el('fieldset','');
   el('legend','Gruppe '+(i+1),box);
@@ -86,18 +179,38 @@ function groupEditor(){
 function groupForm(parent,index){
  const area=el('textarea','',el('label','Zehn Lernwörter',parent));
  area.rows=10;
- if(index!==null)area.value=data.groups[index].words.join('\n');
+ if(index!==null)area.value=data.groups[index].words.map(word=>{
+  const card=data.groups[index].cards?.find(c=>c.word===word);
+  return card&&(card.sentence||card.mask)?[word,card.sentence,card.mask].join(' | '):word;
+ }).join('\n');
  const error=el('p','',parent);
  error.className='form-error';
  error.setAttribute('role','status');
  button('Gruppe speichern',()=>{
-  const words=area.value.split(/\r?\n/).map(word=>word.trim().normalize('NFC')).filter(Boolean);
-  if(words.length!==10||new Set(words.map(w=>w.toLocaleLowerCase('de'))).size!==10||words.some(w=>/\s/.test(w))){
-   error.textContent='Bitte zehn verschiedene einzelne Wörter eingeben.';
+  const rows=area.value.split(/\r?\n/).map(line=>line.trim().normalize('NFC')).filter(Boolean);
+  const parts=rows.map(line=>line.split('|').map(field=>field.trim()));
+  const cards=parts.map(([word,sentence='',mask=''])=>({word,sentence,mask}));
+  const words=cards.map(card=>card.word);
+  if(words.length!==10||new Set(words.map(w=>w.toLocaleLowerCase('de'))).size!==10||words.some(w=>!w||/\s/.test(w))||parts.some(p=>p.length>3)){
+   error.textContent='Bitte genau zehn verschiedene Wörter eingeben, eines pro Zeile.';
    return;
   }
-  const results=data.groups[index]?.results||{};
-  const group={words,results:Object.fromEntries(words.filter(w=>Object.hasOwn(results,w)).map(w=>[w,results[w]]))};
+  for(const {word,sentence,mask} of cards){
+   if(sentence&&(sentence.match(/_+/g)||[]).join(' ')!=='___'){
+    error.textContent='Der Satz für „'+word+'“ braucht genau eine Lücke mit drei Unterstrichen (___).';
+    return;
+   }
+   if(mask){
+    const valid=Array.from(mask).length===Array.from(word).length&&[...mask.matchAll(/x+/g)].length===1&&Array.from(mask).every((letter,i)=>letter==='x'||letter===Array.from(word)[i]);
+    if(!valid){
+     error.textContent='Bei „'+word+'“ muss die schwierige Stelle aus zusammenhängenden x bestehen, eines je Buchstabe.';
+     return;
+    }
+   }
+  }
+  const previous=data.groups[index];
+  const keep=results=>Object.fromEntries(words.filter(w=>Object.hasOwn(results,w)).map(w=>[w,results[w]]));
+  const group={words,cards,results:keep(previous?.results||{}),byMode:Object.fromEntries(Object.entries(previous?.byMode||{}).map(([mode,results])=>[mode,keep(results)]))};
   if(index===null)data.groups.push(group);
   else data.groups[index]=group;
   save();open('groups');
@@ -106,33 +219,50 @@ function groupForm(parent,index){
 function practice(){
  const group=data.groups[groupIndex];
  if(!group){open('words');return;}
- title('Gruppe '+(groupIndex+1));
- if(wordIndex===group.words.length){
-  el('p','Geschafft! Ihr könnt die Gruppe wiederholen oder eine andere wählen.');
-  button('Zu den Gruppen',()=>open('words'),panel,'primary');
+ title(wordModes[wordMode]+' · Gruppe '+(groupIndex+1));
+ if(wordIndex===exerciseWords.length){
+  el('p','Geschafft! Ihr könnt eine andere Übung oder Gruppe wählen.');
+  button('Zu den Übungen',()=>open('wordModes'),panel,'primary');
   return;
  }
- const word=group.words[wordIndex];
- el('small','Wort '+(wordIndex+1)+' von 10');
- el('p',wordShown?'Schau dir das Wort an.':'Schreib das verdeckte Wort aus dem Kopf auf Papier.');
- el('p',wordShown?word:'•••',panel,'word');
- if(wordShown){
-  button('Wort zudecken',()=>{wordShown=false;open('practice');},panel,'primary');
+ const word=exerciseWords[wordIndex];
+ el('small','Wort '+(wordIndex+1)+' von '+exerciseWords.length);
+ if(wordMode==='lesen'){
+  el('p','Lies das Wort laut vor.');
+  el('p',word,panel,'word');
+  wordFeedback(group,word);
+ }else if(wordMode==='luecke'){
+  const card=group.cards.find(item=>item.word===word);
+  el('p',card.sentence,panel,'cloze');
+  textExercise(group,word,'Welches Wort fehlt?');
+ }else if(wordMode==='stellen'){
+  el('p','Tippe die fehlenden Buchstaben in der richtigen Reihenfolge an.');
+  letterExercise(group,word,maskFor(group,word));
+ }else if(wordMode==='diktat'){
+  dictation(word);
+  textExercise(group,word,'Gehörtes Wort');
  }else{
-  button('Wort zum Vergleichen zeigen',event=>{event.currentTarget.disabled=true;panel.querySelector('.word').textContent=word;
-   el('p','Wie hat es beim Schreiben geklappt?');
-   const row=el('div','',panel,'row');
-   for(const [value,label] of [['solo','Selbst geschafft'],['help','Mit Hilfe'],['repeat','Noch mal üben']]){
-    button(label,()=>{Object.defineProperty(group.results,word,{value,enumerable:true,writable:true,configurable:true});save();nextWord();},row);
-   }
-  },panel,'primary');
+  el('p',wordShown?'Schau dir das Wort an.':'Schreib das verdeckte Wort aus dem Kopf auf Papier.');
+  el('p',wordShown?word:'•••',panel,'word');
+  if(wordShown){
+   button('Wort zudecken',()=>{wordShown=false;open('practice');},panel,'primary');
+  }else{
+   button('Wort zum Vergleichen zeigen',event=>{
+    event.currentTarget.disabled=true;
+    panel.querySelector('.word').textContent=word;
+    el('p','Wie hat es beim Schreiben geklappt?');
+    wordFeedback(group,word);
+   },panel,'primary');
+  }
  }
- button('Überspringen',nextWord,el('nav',''));
+ const nav=el('nav','');
+ button('Zu den Übungen',()=>open('wordModes'),nav);
+ button('Überspringen',nextWord,nav);
 }
 function nextWord(){wordIndex++;wordShown=true;open('practice');}
 function profile(){
  title('Lernprofil');
- el('p','Die Auswertung nutzt eure Beobachtungen und die jeweils letzte Einschätzung pro Lernwort.');
+ el('p','Die Auswertung nutzt eure Beobachtungen und die jeweils letzten Ergebnisse pro Lernwort und Übungsart.');
  const report=['Lernprofil'];
  const easy=[], support=[], openTasks=[];
  for(const f of ['A','B']){
@@ -152,9 +282,17 @@ function profile(){
  data.groups.forEach((group,i)=>{
   report.push('','Gruppe '+(i+1));
   for(const w of group.words){
-   const status=Object.hasOwn(group.results,w)?group.results[w]:'';
-   if(status)words[status].push(w);
-   report.push(w+' – '+({solo:'selbst geschafft',help:'mit Hilfe',repeat:'noch mal üben'}[status]||'noch offen'));
+   const labels={solo:'selbst geschafft',help:'mit Hilfe',repeat:'noch mal üben'};
+   const attempts=[];
+   for(const [id,label] of Object.entries(wordModes)){
+    const results=id==='merken'?group.results:group.byMode?.[id]||{};
+    if(Object.hasOwn(results,w))attempts.push([label,results[w]]);
+   }
+   const statuses=attempts.map(([,status])=>status);
+   const priority=['repeat','help','solo'].find(status=>statuses.includes(status));
+   if(priority)words[priority].push(w);
+   report.push(w+' – '+(attempts.map(([label,status])=>label+': '+labels[status]).join(' · ')||'noch offen'));
+
   }
  });
  const observations=el('div','',panel,'result');
@@ -229,6 +367,7 @@ function render(){
  }
  if(view==='words'){wordsView();return;}
  if(view==='groups'){groupEditor();return;}
+ if(view==='wordModes'){chooseWordMode();return;}
  if(view==='practice'){practice();return;}
  if(view==='profile'){profile();return;}
  if(view==='check'){
@@ -405,4 +544,5 @@ function parents(){
 open('home');
 </script>
 </html>
+
 

@@ -20,11 +20,21 @@
 .form-error{color:#8a2435}.word-list{overflow-wrap:anywhere}
  .answer-input{font:inherit;width:100%;padding:10px;border:1px solid #9caeac;border-radius:8px}.letters{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.letters button{min-width:48px;font-size:22px}.cloze{font-size:clamp(21px,5vw,32px);overflow-wrap:anywhere}
 
-.firework{position:fixed;z-index:10;inset:0;pointer-events:none;display:grid;place-items:center}
-.spark{position:absolute;top:var(--top);left:var(--left);width:9px;height:9px;border-radius:50%;background:var(--spark);animation:burst 800ms var(--delay) ease-out both}
-.firework-icon{display:none;font-size:72px}
-@keyframes burst{0%{transform:scale(.2);opacity:0}15%{opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(.25);opacity:0}}
-@media(prefers-reduced-motion:reduce){.spark{display:none;animation:none}.firework-icon{display:block}}
+
+.tiles .tile:nth-child(5n+1){background:#e0f4e8;border-color:#7fb49b}
+.tiles .tile:nth-child(5n+2){background:#fff1ce;border-color:#d4ac61}
+.tiles .tile:nth-child(5n+3){background:#e8e7fc;border-color:#a9a0d9}
+.tiles .tile:nth-child(5n+4){background:#fce7ed;border-color:#d8a2b4}
+.tiles .tile:nth-child(5n+5){background:#e1f1fc;border-color:#8bb4cd}
+.puzzle-board,.piece-tray{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;max-width:360px;margin:12px auto}
+.puzzle-board:has(.photo),.piece-tray:has(.photo){aspect-ratio:var(--photo-ratio,3/4)}
+.piece-tray:has(.photo){aspect-ratio:auto;grid-auto-rows:minmax(54px,auto)}
+.puzzle-board button,.piece-tray button{min-width:0;padding:0;min-height:0;aspect-ratio:1;border:1px solid #9aaea7;border-radius:7px;font-size:clamp(16px,5vw,30px)}
+.puzzle-board:has(.photo) button,.puzzle-board.photo-board button,.piece-tray:has(.photo) button{aspect-ratio:var(--photo-ratio,3/4)}
+.puzzle-board button:disabled{opacity:1}.puzzle-board .empty{background:#fff;outline:1px dashed #729d8b;outline-offset:-5px}
+.puzzle-board .photo,.piece-tray .photo{background-size:300% 300%;background-repeat:no-repeat}
+.piece-tray button[aria-pressed=true]{outline:4px solid #286650;outline-offset:1px}
+.puzzle-preview{display:block;width:min(100%,230px);height:auto;margin:10px auto;border-radius:10px}
 </style>
 <main>
 <header><button id="home">Übersicht</button><button id="parents">Für Eltern</button></header>
@@ -58,9 +68,116 @@ if(data.B.edition!==2){
  data.B={i:0,a:{},notes:{},fun:'',edition:2};
 }
 data.groups ??=[];
+data.puzzle ??={earned:0,placed:[],order:shuffledPieces()};
+const photoKey='mats-puzzle-photo-v1';
+let photo=null;
+try{photo=JSON.parse(localStorage.getItem(photoKey)||'null');}catch{}
+let selectedPiece=null;
+const puzzleAnimals=['🐣','🦕','🐢','🐰','🦖','🦊','🦉','🐿️','🐻'];
+const puzzleColors=['#ffebbb','#ceeddd','#e4e1ff','#fadddf','#d0e8fc','#ffe5d1','#f4e0fa','#e1efbc','#d4eeee'];
+function shuffledPieces(){
+ const pieces=Array.from({length:9},(_,i)=>i);
+ for(let i=pieces.length-1;i>0;i--){
+  const j=Math.floor(Math.random()*(i+1));
+  [pieces[i],pieces[j]]=[pieces[j],pieces[i]];
+ }
+ return pieces;
+}
+function earnPiece(){
+ if(data.puzzle.earned>=data.puzzle.order.length)return false;
+ data.puzzle.earned++;
+ return true;
+}
+function newPuzzle(){
+ data.puzzle={earned:0,placed:[],order:shuffledPieces()};
+ selectedPiece=null;save();open('puzzle');
+}
+function drawPiece(button,index){
+ if(photo){
+  button.classList.add('photo');
+  button.style.backgroundImage='url("'+photo.url+'")';
+  button.style.backgroundPosition=(index%3*50)+'% '+(Math.floor(index/3)*50)+'%';
+ }else{
+  button.style.backgroundColor=puzzleColors[index];
+  button.textContent=puzzleAnimals[index]+' '+(index+1);
+ }
+}
+function puzzleView(message=''){
+ title('Mein Puzzle');
+ const puzzle=data.puzzle;
+ const remaining=puzzle.order.slice(0,puzzle.earned).filter(i=>!puzzle.placed.includes(i));
+ el('p',puzzle.earned+' von 9 Teilen gesammelt · '+puzzle.placed.length+' eingesetzt');
+ const status=el('p',message||(remaining.length?'Tippe ein Teil an und wähle dann einen Platz.':puzzle.placed.length===9?'Geschafft! Dein Puzzle ist fertig.':'Beim Lernwörter-Üben kannst du Puzzleteile sammeln.'));
+ status.setAttribute('role','status');
+ if(photo){
+  const hint=el('details','');
+  el('summary','Puzzlebild als Hilfe zeigen',hint);
+  const preview=el('img','',hint,'puzzle-preview');
+  preview.src=photo.url;preview.alt='Vorschau des Puzzlebilds';
+ }
+ const board=el('div','',panel,'puzzle-board'+(photo?' photo-board':''));
+ if(photo)board.style.setProperty('--photo-ratio',photo.ratio);
+ for(let i=0;i<9;i++){
+  const placed=puzzle.placed.includes(i);
+  const slot=button(placed?'':(photo?'':String(i+1)),()=>{
+   if(selectedPiece===null){status.textContent='Wähle zuerst ein Puzzleteil.';return;}
+   if(selectedPiece!==i){status.textContent='Das Teil passt hier noch nicht. Probier einen anderen Platz.';return;}
+   puzzle.placed.push(i);
+   selectedPiece=null;save();open('puzzle');
+  },board,placed?'':'empty');
+  slot.disabled=placed;
+  slot.setAttribute('aria-label','Platz '+(i+1)+(placed?', eingesetzt':''));
+  if(placed)drawPiece(slot,i);
+ }
+ if(remaining.length){
+  const tray=el('div','',panel,'piece-tray');
+  if(photo)tray.style.setProperty('--photo-ratio',photo.ratio);
+  remaining.forEach((i,n)=>{
+   const piece=button('',()=>{
+    selectedPiece=i;mark(tray,piece);status.textContent='Wähle jetzt einen freien Platz im Puzzle.';
+   },tray);
+   piece.setAttribute('aria-label','Puzzleteil '+(n+1)+' im Vorrat');
+   piece.setAttribute('aria-pressed',String(selectedPiece===i));
+   drawPiece(piece,i);
+  });
+ }
+ if(puzzle.placed.length===9)button('Neues Puzzle starten',newPuzzle,panel,'primary');
+ button('Zu den Lernwörtern',()=>open('words'),el('nav',''));
+}
+function puzzlePhotoSettings(){
+ title('Puzzlebild');
+ el('p','Wählt ein Foto von diesem Gerät. Es wird im Browser für dieses Puzzle gespeichert.');
+ const input=el('input','',el('label','Foto auswählen'));
+ input.type='file';input.accept='image/*';
+ const status=el('p',photo?'Eigenes Foto ausgewählt.':'Das Tierpuzzle ist ausgewählt.');
+ status.setAttribute('role','status');
+ input.onchange=async()=>{
+  const file=input.files[0];
+  if(!file)return;
+  const url=URL.createObjectURL(file);
+  try{
+   const image=new Image();
+   image.src=url;await image.decode();
+   const scale=Math.min(1,750/Math.max(image.width,image.height));
+   const canvas=document.createElement('canvas');
+   canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));
+   canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
+   const next={url:canvas.toDataURL('image/jpeg',.83),ratio:canvas.width+'/'+canvas.height};
+   localStorage.setItem(photoKey,JSON.stringify(next));
+   photo=next;status.textContent='Foto gespeichert.';
+  }catch{status.textContent='Das Foto konnte nicht gespeichert werden. Probiert es mit einem JPG oder PNG.';}
+  finally{URL.revokeObjectURL(url);}
+ };
+ if(photo)button('Tierpuzzle verwenden',()=>{
+  localStorage.removeItem(photoKey);photo=null;open('photo');
+ });
+ button('Zum Puzzle',()=>open('puzzle'),el('nav',''),'primary');
+}
+
 const activities=[
  {label:'🦕 Denkcheck',hint:'Denkaufgaben und Dino-Mission',view:'check'},
- {label:'📚 Lernwörter',hint:'Wörter in Zehnergruppen üben',view:'words'}
+ {label:'📚 Lernwörter',hint:'Wörter in Zehnergruppen üben',view:'words'},
+ {label:'🧩 Mein Puzzle',hint:'Gesammelte Teile einsetzen',view:'puzzle'}
 ];
 const wordModes={
  lesen:'Lesen', luecke:'Lückentext', stellen:'Schwierige Stellen', diktat:'Diktat', merken:'Anschauen und zudecken'
@@ -85,7 +202,17 @@ function normalizeMask(mask){
 }
 function maskFor(group,word){
  const mask=group.cards?.find(c=>c.word===word)?.mask;
- return mask?normalizeMask(mask):(word==='plötzlich'?'plö__lich':word==='Plötzlich'?'Plö__lich':'');
+ if(mask)return normalizeMask(mask);
+ const letters=Array.from(word);
+ const tricky=word.match(/tsch|sch|chs|ck|tz|ß|ie|(?:[aeou])h|([bdfgklmnprstz])\1/iu)||word.match(/[äöü](?:u)?|[dtgbp]$/iu);
+ if(tricky){
+  const start=Array.from(word.slice(0,tricky.index)).length;
+  const length=Array.from(tricky[0]).length;
+  return letters.map((letter,i)=>i>=start&&i<start+length?'_':letter).join('');
+ }
+ const vowel=letters.findIndex((letter,i)=>i>0&&/[aeiou]/i.test(letter));
+ const target=vowel>=0?vowel:Math.floor(letters.length/2);
+ return letters.map((letter,i)=>i===target?'_':letter).join('');
 }
 function markWord(group,word,result){
  if(wordMode==='merken'){
@@ -95,31 +222,15 @@ function markWord(group,word,result){
   group.byMode[wordMode]??={};
   Object.defineProperty(group.byMode[wordMode],word,{value:result,enumerable:true,writable:true,configurable:true});
  }
+ const earned=result==='solo'&&earnPiece();
  save();
+ return earned;
 }
 function wordFeedback(group,word){
  const row=el('div','',panel,'row');
  for(const [value,label] of [['solo','Selbst geschafft'],['help','Mit Hilfe'],['repeat','Noch mal üben']]){
-  button(label,()=>{markWord(group,word,value);nextWord();},row);
+  button(label,()=>{const earned=markWord(group,word,value);nextWord(earned);},row);
  }
-}
-function celebrate(){
- const effect=el('div','',panel,'firework');
- effect.setAttribute('aria-hidden','true');
- el('span','🎉',effect,'firework-icon');
- const colors=['#e99b12','#d14376','#2d9a62','#426cdd','#a84ed1'];
- for(const [burst,[left,top]] of [[36,32],[66,42],[49,57]].entries()){
-  for(let i=0;i<12;i++){
-   const spark=el('span','',effect,'spark');
-   const angle=i*Math.PI/6;
-   const radius=i%2===0?78:51;
-   for(const [key,value] of Object.entries({
-    left:left+'%',top:top+'%',dx:Math.cos(angle)*radius+'px',
-    dy:Math.sin(angle)*radius+'px',delay:burst*110+'ms',spark:colors[(i+burst)%colors.length]
-   }))spark.style.setProperty('--'+key,value);
-  }
- }
- setTimeout(()=>effect.remove(),1100);
 }
 function textExercise(group,word,prompt){
  const form=el('form','');
@@ -133,9 +244,8 @@ function textExercise(group,word,prompt){
   if(!answer||submit.disabled)return;
   field.disabled=true;submit.disabled=true;
   const correct=answer===word;
-  markWord(group,word,correct?'solo':'repeat');
-  if(correct)celebrate();
-  el('p',correct?'Richtig!':'So wird das Wort geschrieben: '+word,form,'result').setAttribute('role','status');
+  const earned=markWord(group,word,correct?'solo':'repeat');
+  el('p',correct?(earned?'Richtig! 🧩 Ein Puzzleteil für dich.':'Richtig!'):'So wird das Wort geschrieben: '+word,form,'result').setAttribute('role','status');
   button('Weiter',nextWord,form,'primary').focus();
  };
 }
@@ -157,9 +267,8 @@ function letterExercise(group,word,mask){
   const correct=picked.join('')===answer.join('');
   check.disabled=true;
   [...letters.querySelectorAll('button'),...controls.querySelectorAll('button')].forEach(b=>b.disabled=true);
-  markWord(group,word,correct?'solo':'repeat');
-  if(correct)celebrate();
-  el('p',correct?'Richtig!':'So wird das Wort geschrieben: '+word,panel,'result').setAttribute('role','status');
+  const earned=markWord(group,word,correct?'solo':'repeat');
+  el('p',correct?(earned?'Richtig! 🧩 Ein Puzzleteil für dich.':'Richtig!'):'So wird das Wort geschrieben: '+word,panel,'result').setAttribute('role','status');
   button('Weiter',nextWord,panel,'primary').focus();
  },controls,'primary');
 }
@@ -192,6 +301,7 @@ function groupEditor(){
  title('Lernwortgruppen');
  el('p','Gebt pro Zeile ein Lernwort ein. Optional könnt ihr einen Lückensatz und eine schwierige Stelle hinzufügen.');
  el('p','Beispiel: plötzlich | Es regnet ___. | plö__lich');
+ el('small','Ohne eigene Vorgabe schlägt die App eine Buchstabenlücke vor.');
  el('small','Für nur eine schwierige Stelle lasst ihr das Feld für den Satz leer: plötzlich | | plö__lich. Jeder Unterstrich steht für einen fehlenden Buchstaben.');
  for(const [i,group] of data.groups.entries()){
   const box=el('fieldset','');
@@ -246,13 +356,17 @@ function groupForm(parent,index){
   save();open('groups');
  },parent,'primary');
 }
+let wordReward=false;
 function practice(){
  const group=data.groups[groupIndex];
  if(!group){open('words');return;}
  title(wordModes[wordMode]+' · Gruppe '+(groupIndex+1));
+ if(wordReward){el('p','🧩 Ein Puzzleteil für dich!',panel,'result');wordReward=false;}
  if(wordIndex===exerciseWords.length){
   el('p','Geschafft! Ihr könnt eine andere Übung oder Gruppe wählen.');
-  button('Zu den Übungen',()=>open('wordModes'),panel,'primary');
+  const nav=el('nav','');
+  button('Zu den Übungen',()=>open('wordModes'),nav);
+  button('Mein Puzzle',()=>open('puzzle'),nav,'primary');
   return;
  }
  const word=exerciseWords[wordIndex];
@@ -289,7 +403,7 @@ function practice(){
  button('Zu den Übungen',()=>open('wordModes'),nav);
  button('Überspringen',nextWord,nav);
 }
-function nextWord(){wordIndex++;wordShown=true;open('practice');}
+function nextWord(earned){wordReward=earned===true;wordIndex++;wordShown=true;open('practice');}
 function profile(){
  title('Lernprofil');
  el('p','Die Auswertung nutzt eure Beobachtungen und die jeweils letzten Ergebnisse pro Lernwort und Übungsart.');
@@ -396,6 +510,8 @@ function render(){
   return;
  }
  if(view==='words'){wordsView();return;}
+ if(view==='puzzle'){puzzleView();return;}
+ if(view==='photo'){puzzlePhotoSettings();return;}
  if(view==='groups'){groupEditor();return;}
  if(view==='wordModes'){chooseWordMode();return;}
  if(view==='practice'){practice();return;}
@@ -530,6 +646,7 @@ function parents(){
  const actions=el('div','',panel,'row');
  button('Lernprofil erstellen',()=>open('profile'),actions,'primary');
  button('Lernwortgruppen verwalten',()=>open('groups'),actions);
+ button('Puzzlebild auswählen',()=>open('photo'),actions);
  el('h2','Beobachtungsbogen');
  el('p','Je eine Runde an zwei Tagen, etwa zehn Minuten ohne Stoppuhr. Lest alles vor. Das Kind darf zeigen, sprechen, zeichnen oder pausieren.');
  el('p','In der sachlichen Runde lest ihr bei Aufgabe 6 die Wörter einzeln vor. In der Dino-Runde schaut sich das Kind drei Bilder an und tippt sie nach dem Zudecken in derselben Reihenfolge an. Haltet Wiederholungen und Tipps fest.');
@@ -574,6 +691,7 @@ function parents(){
 open('home');
 </script>
 </html>
+
 
 
 

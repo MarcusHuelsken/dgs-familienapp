@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Denkaufgaben und Dino-Mission</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#edf0f3;color:#202d39;font:17px/1.5 system-ui,sans-serif}body.dino{background:#e4f4e8;color:#183b34}main{max-width:680px;margin:auto;padding:24px 16px}header,nav,.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}header{justify-content:space-between;margin-bottom:15px}article{background:white;border:1px solid #cdd8d5;border-radius:24px;padding:clamp(18px,5vw,40px);box-shadow:0 12px 30px #20323212}h1{font-size:clamp(27px,6vw,40px);line-height:1.12;margin:12px 0}p{margin:12px 0}button,textarea,select{font:inherit}button{cursor:pointer;min-height:48px;border:1px solid #9caeac;border-radius:12px;background:#fff;color:inherit;padding:9px 15px;font-weight:600}button.primary,button[aria-pressed=true]{background:#274450;color:white;border-color:transparent}.dino button.primary,.dino button[aria-pressed=true]{background:#216451}button:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #8d5100;outline-offset:3px}.choices{margin:18px 0}.choices button{min-width:64px}.symbols{font-size:32px;letter-spacing:.25em}.grid{display:grid;grid-template-columns:repeat(3,64px);gap:6px;margin:16px 0}.grid button{height:56px;padding:0;font-size:25px}.grid .start{box-shadow:inset 0 0 0 2px #829e96}nav{margin-top:26px}nav .primary{margin-left:auto}progress{width:100%;accent-color:#286650;height:12px}.pet{font-size:64px;line-height:1;float:right;margin:0 0 10px 12px}small{display:block;color:#47595c}label{display:block;margin:10px 0}textarea{width:100%;min-height:85px;border:1px solid #9caeac;border-radius:8px;padding:8px}fieldset{margin:16px 0;border:1px solid #cdd8d5;border-radius:12px;padding:14px}select{max-width:100%;padding:6px}.report{min-height:160px;margin-top:12px}button:disabled{opacity:.5;cursor:default}
+</style>
+<main>
+<header><button id="home">Übersicht</button><button id="parents">Für Eltern</button></header>
+<article id="screen"></article>
+</main>
+<script>
+'use strict';
+const screens = {
+ A:[
+ ['Muster','Was kommt als Nächstes?','△ □ △ △ □ ?', ['○','□','△'],'△'],
+ ['Zahlen','Wie viele bleiben übrig?','7 Punkte sind da. 3 kommen weg.', ['3','4','5','6'],'4'],
+ ['Sortieren','Was passt am wenigsten dazu? Sag, warum.','', ['Tasse','Teller','Schüssel','Socke'],'Socke'],
+ ['Reihenfolge','Was liegt in der Mitte?','Das Dreieck liegt vor dem Quadrat. Der Kreis liegt hinter dem Quadrat.', ['Dreieck','Quadrat','Kreis'],'Quadrat'],
+ ['Weg im Raster','Starte beim Kreis. Zeig, wo du ankommst.','2 nach unten, 1 nach rechts.',null,'unten Mitte'],
+ ['Merkfolge','Hör zu. Sag die Wörter in derselben Reihenfolge.','Jetzt liest dir jemand drei Wörter vor.',null,'Ball – Baum – Fisch']
+ ],
+ B:[
+ ['Die Eierreihe','Was kommt als Nächstes?','○ □ △ ○ □ ?', ['□','○','△'],'△'],
+ ['Der Futtervorrat','Wie viele bleiben übrig?','8 Beeren liegen da. Ein Dino frisst 3.', ['4','5','6','7'],'5'],
+ ['Das falsche Nest','Was passt am wenigsten dazu? Sag, warum.','', ['Apfel','Birne','Schuh','Banane'],'Schuh'],
+ ['Die Schlafplätze','Wer sitzt in der Mitte?','Pippa sitzt vor Nino. Taps sitzt hinter Nino.', ['Pippa','Nino','Taps'],'Nino'],
+ ['Der Weg zur Höhle','Starte beim Kreis. Zeig, wo du ankommst.','2 nach unten, 1 nach links.',null,'unten Mitte'],
+ ['Die Flüsterpost','Hör zu. Sag die Wörter in derselben Reihenfolge.','Jetzt liest dir jemand drei Wörter vor.',null,'Buch – Hut – Hund']
+ ]
+};
+const key='mats-denkcheck-v1';
+const fresh=()=>({A:{i:0,a:{},notes:{},fun:''},B:{i:0,a:{},notes:{},fun:''}});
+let data=fresh(), persistent=true;
+try{const saved=localStorage.getItem(key);if(saved)data=JSON.parse(saved);}catch{persistent=false;}
+function save(){try{localStorage.setItem(key,JSON.stringify(data));}catch{persistent=false;}}
+const panel=document.querySelector('#screen');
+let form='A', view='home';
+const mode={A:'Denkaufgaben',B:'Mission Dino-Kinderstube'};
+const locations=['oben links','oben Mitte','oben rechts','Mitte links','Mitte','Mitte rechts','unten links','unten Mitte','unten rechts'];
+function el(tag, text, parent=panel, cls=''){
+ const node=document.createElement(tag);
+ node.textContent=text;
+ if(cls)node.className=cls;
+ parent.append(node);
+ return node;
+}
+function button(text,fn,parent=panel,cls=''){
+ const b=el('button',text,parent,cls);
+ b.type='button';
+ b.addEventListener('click',fn);
+ return b;
+}
+function open(next){
+ view=next;
+ render();
+ panel.querySelector('h1')?.focus();
+ window.scrollTo(0,0);
+}
+function title(text){const h=el('h1',text);h.tabIndex=-1;}
+document.querySelector('#home').onclick=()=>open('home');
+document.querySelector('#parents').onclick=()=>open('parents');
+function render(){
+ panel.replaceChildren();
+ document.body.classList.toggle('dino',view==='round'&&form==='B');
+ if(view==='home'){
+  title('Welches Rätsel willst du spielen?');
+  el('p','Du kannst zeigen, sprechen oder tippen. Eine Pause geht jederzeit.');
+  for(const f of ['A','B']){
+   const suffix=data[f].i===6?' · fertig':data[f].i>0?' · weitermachen':'';
+   button((f==='B'?'🦕  ':'')+mode[f]+suffix,()=>{form=f;open('round');},el('p',''),f==='B'?'primary':'');
+  }
+  return;
+ }
+ if(view==='parents'){parents();return;}
+ const round=data[form], i=round.i;
+ if(form==='B')el('span',i===6?'🦕':'🦖',panel,'pet').setAttribute('aria-hidden','true');
+ el('small',mode[form]);
+ if(i===6){
+  title(form==='B'?'Die Dino-Babys sind im Nest!':'Die Runde ist fertig.');
+  el('p','Welches Rätsel würdest du noch mal machen?');
+  const choices=el('div','',panel,'row choices');
+  screens[form].forEach(([name])=>{
+   const b=button(name,()=>{round.fun=name;save(); mark(choices,b);},choices);
+   b.setAttribute('aria-pressed',String(round.fun===name));
+  });
+  button('Letzte Aufgabe',()=>move(5),el('nav',''));
+  return;
+ }
+ const [name,prompt,body,choices]=screens[form][i];
+ title(name);
+ const progress=el('progress','');
+ progress.setAttribute('aria-label','Aufgabe '+(i+1)+' von 6');
+ progress.max=6;progress.value=i+1;
+ el('small','Aufgabe '+(i+1)+' von 6');
+ el('p',prompt);
+ if(body)el('p',body,panel,i===0?'symbols':'');
+ if(choices||i===4){
+  const group=el('div','',panel,i===4?'grid':'row choices');
+  (choices||locations).forEach((answer,index)=>{
+   const start=i===4&&index===(form==='A'?0:2);
+   const b=button(i===4?(start?'○':'·'):answer,()=>{round.a[i]=answer;save();mark(group,b);},group,start?'start':'');
+   if(i===4)b.setAttribute('aria-label',answer+(start?', Start':''));
+   b.setAttribute('aria-pressed',String(round.a[i]===answer));
+  });
+ }
+ const nav=el('nav','');
+ if(i>0)button('Zurück',()=>move(i-1),nav);
+ if(i<5)button('Überspringen',()=>{delete round.a[i];move(i+1);},nav);
+ button(i===5?'Runde beenden':'Weiter',()=>move(i+1),nav,'primary');
+}
+function mark(group,selected){
+ for(const b of group.querySelectorAll('button'))b.setAttribute('aria-pressed',String(b===selected));
+}
+function move(i){data[form].i=i;save();open('round');}
+function parents(){
+ title('Beobachtungsbogen');
+ el('p','Je eine Runde an zwei Tagen, etwa zehn Minuten ohne Stoppuhr. Lest alles vor. Das Kind darf zeigen, sprechen, zeichnen oder pausieren.');
+ el('p','Bei Aufgabe 6 lest ihr die drei Wörter mit etwa einer Sekunde Abstand vor. Das Kind sagt sie direkt nach. Haltet Wiederholungen und Tipps fest. Bei Aufgabe 3 zählt auch eine andere Antwort mit schlüssiger Begründung.');
+ el('small','Die Aufgaben haben keine Altersnorm. Aus den Ergebnissen lässt sich kein IQ-Wert ableiten.');
+ if(!persistent)el('p','Dieser Browser speichert hier keine Eingaben dauerhaft. Kopiert den Bericht vor dem Schließen.');
+ const summary=()=>{
+  const lines=[];
+  for(const f of ['A','B']){
+   const r=data[f];
+   lines.push(mode[f]);
+   screens[f].forEach(([name],i)=>lines.push((i+1)+'. '+name+' – '+(r.notes[i]||'ohne Beobachtung')+(r.a[i]?' · getippt: '+r.a[i]:'')));
+   lines.push('Lieblingsrätsel: '+(r.fun||'offen'),'');
+  }
+  lines.push('Beobachtungen: '+(data.comment||''));
+  return lines.join('\n');
+ };
+ let report;
+ for(const f of ['A','B']){
+  const r=data[f], field=el('fieldset','');
+  el('legend',mode[f],field);
+  screens[f].forEach(([name,,,,answer],i)=>{
+   const label=el('label',(i+1)+'. '+name,field);
+   el('small','Lösung: '+answer+(r.a[i]?' · Gewählte Antwort: '+r.a[i]:''),label);
+   const select=el('select','',label);
+   for(const state of ['','Selbst gelöst','Nach Hilfe','Offen oder übersprungen']){
+    const opt=el('option',state||'Beobachtung wählen',select);opt.value=state;
+   }
+   select.value=r.notes[i]||'';
+   select.onchange=()=>{r.notes[i]=select.value;save();report.value=summary();};
+  });
+ }
+ const comment=el('textarea','',el('label','Was hat geholfen? Wie wurde das Rätsel gelöst?'));
+ comment.value=data.comment||'';
+ comment.oninput=()=>{data.comment=comment.value;save();report.value=summary();};
+ report=el('textarea','',el('label','Zusammenfassung fürs Training'),'report');
+ report.readOnly=true;
+ report.value=summary();
+ button('Zusammenfassung markieren',()=>{report.focus();report.select();report.setSelectionRange(0,report.value.length);});
+ button('Zurück zur Runde',()=>open('round'),el('nav',''),'primary');
+}
+open('home');
+</script>
+</html>

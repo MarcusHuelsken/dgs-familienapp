@@ -26,15 +26,16 @@
 .tiles .tile:nth-child(5n+3){background:#e8e7fc;border-color:#a9a0d9}
 .tiles .tile:nth-child(5n+4){background:#fce7ed;border-color:#d8a2b4}
 .tiles .tile:nth-child(5n+5){background:#e1f1fc;border-color:#8bb4cd}
-.puzzle-board,.piece-tray{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;max-width:360px;margin:12px auto}
+.puzzle-board,.piece-tray{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;max-width:360px;margin:12px auto}
 .puzzle-board:has(.photo),.piece-tray:has(.photo){aspect-ratio:var(--photo-ratio,3/4)}
 .piece-tray:has(.photo){aspect-ratio:auto;grid-auto-rows:minmax(54px,auto)}
-.puzzle-board button,.piece-tray button{min-width:0;padding:0;min-height:0;aspect-ratio:1;border:1px solid #9aaea7;border-radius:7px;font-size:clamp(16px,5vw,30px)}
+.puzzle-board button,.piece-tray button{min-width:0;padding:0;min-height:0;aspect-ratio:1;border:1px solid #9aaea7;border-radius:7px;font-size:clamp(12px,4vw,22px)}
 .puzzle-board:has(.photo) button,.puzzle-board.photo-board button,.piece-tray:has(.photo) button{aspect-ratio:var(--photo-ratio,3/4)}
 .puzzle-board button:disabled{opacity:1}.puzzle-board .empty{background:#fff;outline:1px dashed #729d8b;outline-offset:-5px}
-.puzzle-board .photo,.piece-tray .photo{background-size:300% 300%;background-repeat:no-repeat}
+.puzzle-board .photo,.piece-tray .photo{background-size:500% 500%;background-repeat:no-repeat}
 .piece-tray button[aria-pressed=true]{outline:4px solid #286650;outline-offset:1px}
 .puzzle-preview{display:block;width:min(100%,230px);height:auto;margin:10px auto;border-radius:10px}
+.tiles .tile.progress{background:linear-gradient(180deg,#d0efd9 0 var(--done),#f8dee0 var(--done) var(--tried),#eff2f6 var(--tried) 100%)}
 </style>
 <main>
 <header><button id="home">Übersicht</button><button id="parents">Für Eltern</button></header>
@@ -68,46 +69,61 @@ if(data.B.edition!==2){
  data.B={i:0,a:{},notes:{},fun:'',edition:2};
 }
 data.groups ??=[];
-data.puzzle ??={earned:0,placed:[],order:shuffledPieces()};
+
 const photoKey='mats-puzzle-photo-v1';
-let photo=null;
-try{photo=JSON.parse(localStorage.getItem(photoKey)||'null');}catch{}
+let defaultPhoto=null;
+try{defaultPhoto=JSON.parse(localStorage.getItem(photoKey)||'null');}catch{}
 let selectedPiece=null;
 const puzzleAnimals=['🐣','🦕','🐢','🐰','🦖','🦊','🦉','🐿️','🐻'];
 const puzzleColors=['#ffebbb','#ceeddd','#e4e1ff','#fadddf','#d0e8fc','#ffe5d1','#f4e0fa','#e1efbc','#d4eeee'];
-function shuffledPieces(){
- const pieces=Array.from({length:9},(_,i)=>i);
- for(let i=pieces.length-1;i>0;i--){
-  const j=Math.floor(Math.random()*(i+1));
-  [pieces[i],pieces[j]]=[pieces[j],pieces[i]];
- }
- return pieces;
+function modeResults(group,mode){
+ return mode==='merken'?group.results:group.byMode?.[mode]||{};
 }
-function earnPiece(){
- if(data.puzzle.earned>=data.puzzle.order.length)return false;
- data.puzzle.earned++;
- return true;
+function pieceState(group){
+ group.puzzle??={earned:[],placed:[]};
+ const puzzle=group.puzzle;
+ Object.keys(wordModes).forEach((mode,row)=>{
+  const results=modeResults(group,mode);
+  for(let col=0;col<5;col++){
+   const index=row*5+col;
+   const pair=group.words.slice(col*2,col*2+2);
+   if(pair.every(word=>Object.hasOwn(results,word)&&results[word]==='solo')&&!puzzle.earned.includes(index)){
+    puzzle.earned.push(index);
+   }
+  }
+ });
+ return puzzle;
 }
-function newPuzzle(){
- data.puzzle={earned:0,placed:[],order:shuffledPieces()};
- selectedPiece=null;save();open('puzzle');
-}
-function drawPiece(button,index){
+function drawPiece(button,index,photo){
  if(photo){
   button.classList.add('photo');
   button.style.backgroundImage='url("'+photo.url+'")';
-  button.style.backgroundPosition=(index%3*50)+'% '+(Math.floor(index/3)*50)+'%';
+  button.style.backgroundPosition=(index%5*25)+'% '+(Math.floor(index/5)*25)+'%';
  }else{
-  button.style.backgroundColor=puzzleColors[index];
-  button.textContent=puzzleAnimals[index]+' '+(index+1);
+  button.style.backgroundColor=puzzleColors[Math.floor(index/5)];
+  button.textContent=(index+1)+' '+puzzleAnimals[index%puzzleAnimals.length];
  }
 }
-function puzzleView(message=''){
- title('Mein Puzzle');
- const puzzle=data.puzzle;
- const remaining=puzzle.order.slice(0,puzzle.earned).filter(i=>!puzzle.placed.includes(i));
- el('p',puzzle.earned+' von 9 Teilen gesammelt · '+puzzle.placed.length+' eingesetzt');
- const status=el('p',message||(remaining.length?'Tippe ein Teil an und wähle dann einen Platz.':puzzle.placed.length===9?'Geschafft! Dein Puzzle ist fertig.':'Beim Lernwörter-Üben kannst du Puzzleteile sammeln.'));
+function puzzleList(){
+ title('Meine Puzzles');
+ if(!data.groups.length)el('p','Legt zuerst eine Lernwortgruppe an.');
+ const list=el('div','',panel,'tiles');
+ data.groups.forEach((group,i)=>{
+  const puzzle=pieceState(group);
+  const b=button('',()=>{groupIndex=i;selectedPiece=null;open('board');},list,'tile');
+  el('span','🧩 Gruppe '+(i+1),b);
+  el('small',puzzle.earned.length+' von 25 Teilen gesammelt',b);
+ });
+}
+function puzzleView(){
+ const group=data.groups[groupIndex];
+ if(!group){open('puzzle');return;}
+ title('Puzzle · Gruppe '+(groupIndex+1));
+ const puzzle=pieceState(group);
+ const photo=Object.hasOwn(group,'photo')?group.photo:defaultPhoto;
+ const remaining=puzzle.earned.filter(i=>!puzzle.placed.includes(i)).sort((a,b)=>(a*13)%25-(b*13)%25);
+ el('p',puzzle.earned.length+' von 25 Teilen gesammelt · '+puzzle.placed.length+' eingesetzt');
+ const status=el('p',remaining.length?'Tippe ein Teil an und wähle dann einen Platz.':puzzle.placed.length===25?'Geschafft! Dein Puzzle ist fertig.':'Die Wörter 1 und 2, 3 und 4 und so weiter ergeben je ein Teil pro Übungsart.');
  status.setAttribute('role','status');
  if(photo){
   const hint=el('details','');
@@ -117,17 +133,17 @@ function puzzleView(message=''){
  }
  const board=el('div','',panel,'puzzle-board'+(photo?' photo-board':''));
  if(photo)board.style.setProperty('--photo-ratio',photo.ratio);
- for(let i=0;i<9;i++){
+ for(let i=0;i<25;i++){
   const placed=puzzle.placed.includes(i);
   const slot=button(placed?'':(photo?'':String(i+1)),()=>{
    if(selectedPiece===null){status.textContent='Wähle zuerst ein Puzzleteil.';return;}
    if(selectedPiece!==i){status.textContent='Das Teil passt hier noch nicht. Probier einen anderen Platz.';return;}
    puzzle.placed.push(i);
-   selectedPiece=null;save();open('puzzle');
+   selectedPiece=null;save();open('board');
   },board,placed?'':'empty');
   slot.disabled=placed;
   slot.setAttribute('aria-label','Platz '+(i+1)+(placed?', eingesetzt':''));
-  if(placed)drawPiece(slot,i);
+  if(placed)drawPiece(slot,i,photo);
  }
  if(remaining.length){
   const tray=el('div','',panel,'piece-tray');
@@ -136,17 +152,27 @@ function puzzleView(message=''){
    const piece=button('',()=>{
     selectedPiece=i;mark(tray,piece);status.textContent='Wähle jetzt einen freien Platz im Puzzle.';
    },tray);
-   piece.setAttribute('aria-label','Puzzleteil '+(n+1)+' im Vorrat');
+   piece.setAttribute('aria-label','Puzzleteil '+(n+1)+' · '+Object.values(wordModes)[Math.floor(i/5)]);
    piece.setAttribute('aria-pressed',String(selectedPiece===i));
-   drawPiece(piece,i);
+   drawPiece(piece,i,photo);
   });
  }
- if(puzzle.placed.length===9)button('Neues Puzzle starten',newPuzzle,panel,'primary');
- button('Zu den Lernwörtern',()=>open('words'),el('nav',''));
+ const nav=el('nav','');
+ if(puzzle.placed.length)button('Teile zurücklegen',()=>{
+  puzzle.placed=[];selectedPiece=null;save();open('board');
+ },nav);
+ button('Zu meinen Puzzles',()=>open('puzzle'),nav);
 }
 function puzzlePhotoSettings(){
  title('Puzzlebild');
- el('p','Wählt ein Foto von diesem Gerät. Es wird im Browser für dieses Puzzle gespeichert.');
+ if(!data.groups.length){el('p','Legt zuerst eine Lernwortgruppe an.');button('Zu den Lernwortgruppen',()=>open('groups'));return;}
+ const select=el('select','',el('label','Wörtergruppe'));
+ data.groups.forEach((group,i)=>{const option=el('option','Gruppe '+(i+1),select);option.value=i;});
+ select.value=groupIndex;
+ select.onchange=()=>{groupIndex=Number(select.value);open('photo');};
+ const group=data.groups[groupIndex];
+ const photo=Object.hasOwn(group,'photo')?group.photo:defaultPhoto;
+ el('p','Wählt ein Foto von diesem Gerät. Es wird im Browser für diese Wörtergruppe gespeichert.');
  const input=el('input','',el('label','Foto auswählen'));
  input.type='file';input.accept='image/*';
  const status=el('p',photo?'Eigenes Foto ausgewählt.':'Das Tierpuzzle ist ausgewählt.');
@@ -163,15 +189,17 @@ function puzzlePhotoSettings(){
    canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));
    canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
    const next={url:canvas.toDataURL('image/jpeg',.83),ratio:canvas.width+'/'+canvas.height};
-   localStorage.setItem(photoKey,JSON.stringify(next));
-   photo=next;status.textContent='Foto gespeichert.';
+   group.photo=next;
+   try{localStorage.setItem(key,JSON.stringify(data));}
+   catch(error){group.photo=photo;throw error;}
+   open('photo');
   }catch{status.textContent='Das Foto konnte nicht gespeichert werden. Probiert es mit einem JPG oder PNG.';}
   finally{URL.revokeObjectURL(url);}
  };
  if(photo)button('Tierpuzzle verwenden',()=>{
-  localStorage.removeItem(photoKey);photo=null;open('photo');
+  group.photo=null;save();open('photo');
  });
- button('Zum Puzzle',()=>open('puzzle'),el('nav',''),'primary');
+ button('Zum Puzzle',()=>{selectedPiece=null;open('board');},el('nav',''),'primary');
 }
 
 const activities=[
@@ -193,9 +221,23 @@ function chooseWordMode(){
   const available=group.words.filter(word=>id==='luecke'?group.cards?.find(c=>c.word===word)?.sentence:id==='stellen'?maskFor(group,word):true);
   const tile=button('',()=>{wordMode=id;exerciseWords=available;wordIndex=0;wordShown=true;open('practice');},tiles,'tile');
   el('span',label,tile);el('small',available.length?hints[id]:id==='luecke'?'Erst einen Lückensatz im Elternbereich eintragen':'Erst eine schwierige Stelle eintragen',tile);
+  const results=modeResults(group,id);
+  const states=available.map(word=>Object.hasOwn(results,word)?results[word]:'');
+  const done=states.filter(result=>result==='solo').length;
+  const tried=states.filter(Boolean).length;
+  if(available.length){
+   tile.classList.add('progress');
+   tile.style.setProperty('--done',done/available.length*100+'%');
+   tile.style.setProperty('--tried',tried/available.length*100+'%');
+   el('small',done+' / '+available.length+' selbst geschafft',tile);
+  }
   tile.disabled=!available.length;
  }
- button('Zu den Gruppen',()=>open('words'),el('nav',''));
+ el('small','Grün: selbst geschafft · Rosa: mit Hilfe oder noch üben · Grau: offen');
+ el('small','Für alle fünf Lückentext-Teile braucht jedes der zehn Wörter einen Lückensatz.');
+ const nav=el('nav','');
+ button('Zu den Gruppen',()=>open('words'),nav);
+ button('Puzzle dieser Gruppe',()=>{selectedPiece=null;open('board');},nav);
 }
 function normalizeMask(mask){
  return mask.includes('_')?mask:mask.replace(/x+/g,part=>'_'.repeat(part.length));
@@ -215,6 +257,7 @@ function maskFor(group,word){
  return letters.map((letter,i)=>i===target?'_':letter).join('');
 }
 function markWord(group,word,result){
+ const before=pieceState(group).earned.length;
  if(wordMode==='merken'){
   Object.defineProperty(group.results,word,{value:result,enumerable:true,writable:true,configurable:true});
  }else{
@@ -222,7 +265,7 @@ function markWord(group,word,result){
   group.byMode[wordMode]??={};
   Object.defineProperty(group.byMode[wordMode],word,{value:result,enumerable:true,writable:true,configurable:true});
  }
- const earned=result==='solo'&&earnPiece();
+ const earned=pieceState(group).earned.length>before;
  save();
  return earned;
 }
@@ -327,34 +370,110 @@ function groupForm(parent,index){
  error.className='form-error';
  error.setAttribute('role','status');
  button('Gruppe speichern',()=>{
-  const rows=area.value.split(/\r?\n/).map(line=>line.trim().normalize('NFC')).filter(Boolean);
+  try{
+   const cards=parseCards(area.value);
+   if(index===null)data.groups.push(makeGroup(cards));
+   else data.groups[index]=makeGroup(cards,data.groups[index]);
+  }catch(problem){error.textContent=problem.message;return;}
+  save();open('groups');
+ },parent,'primary');
+}
+function parseCards(text){
+  const rows=text.split(/\r?\n/).map(line=>line.trim().normalize('NFC')).filter(Boolean);
   const parts=rows.map(line=>line.split('|').map(field=>field.trim()));
   const cards=parts.map(([word,sentence='',mask=''])=>({word,sentence,mask:normalizeMask(mask)}));
   const words=cards.map(card=>card.word);
   if(words.length!==10||new Set(words.map(w=>w.toLocaleLowerCase('de'))).size!==10||words.some(w=>!w||/\s/.test(w))||parts.some(p=>p.length>3)){
-   error.textContent='Bitte genau zehn verschiedene Wörter eingeben, eines pro Zeile.';
-   return;
+   throw new Error('Bitte genau zehn verschiedene Wörter eingeben, eines pro Zeile.');
   }
   for(const {word,sentence,mask} of cards){
    if(sentence&&(sentence.match(/_+/g)||[]).join(' ')!=='___'){
-    error.textContent='Der Satz für „'+word+'“ braucht genau eine Lücke mit drei Unterstrichen (___).';
-    return;
+    throw new Error('Der Satz für „'+word+'“ braucht genau eine Lücke mit drei Unterstrichen (___).');
    }
    if(mask){
     const valid=Array.from(mask).length===Array.from(word).length&&[...mask.matchAll(/_+/g)].length===1&&Array.from(mask).every((letter,i)=>letter==='_'||letter===Array.from(word)[i]);
     if(!valid){
-     error.textContent='Bei „'+word+'“ muss die schwierige Stelle aus zusammenhängenden Unterstrichen bestehen, eines je Buchstabe.';
-     return;
+     throw new Error('Bei „'+word+'“ muss die schwierige Stelle aus zusammenhängenden Unterstrichen bestehen, eines je Buchstabe.');
     }
    }
   }
-  const previous=data.groups[index];
-  const keep=results=>Object.fromEntries(words.filter(w=>Object.hasOwn(results,w)).map(w=>[w,results[w]]));
-  const group={words,cards,results:keep(previous?.results||{}),byMode:Object.fromEntries(Object.entries(previous?.byMode||{}).map(([mode,results])=>[mode,keep(results)]))};
-  if(index===null)data.groups.push(group);
-  else data.groups[index]=group;
-  save();open('groups');
- },parent,'primary');
+ return cards;
+}
+function makeGroup(cards,previous){
+ const words=cards.map(card=>card.word);
+ const keep=results=>Object.fromEntries(words.filter(w=>Object.hasOwn(results,w)).map(w=>[w,results[w]]));
+ const samePairs=previous?.words.every((word,i)=>word===words[i]);
+ return {words,cards,results:keep(previous?.results||{}),
+  byMode:Object.fromEntries(Object.entries(previous?.byMode||{}).map(([mode,results])=>[mode,keep(results)])),
+  puzzle:samePairs?previous.puzzle:undefined,
+  ...(previous&&Object.hasOwn(previous,'photo')?{photo:previous.photo}:{})};
+}
+function configuration(){
+ title('Wortgruppen auf anderen Geräten');
+ el('p','Exportiert hier die Wortgruppen als JSON. Legt den Text auf GitHub in denkcheck/lernwoerter.json ab. Auf weiteren Geräten könnt ihr ihn hier laden.');
+ el('small','Die Gruppen im GitHub-Repo sind öffentlich. Der Export enthält nur Wörter, Sätze und Buchstabenlücken.');
+ const output=el('textarea','',el('label','Konfiguration'));
+ output.value=JSON.stringify({version:1,groups:data.groups.map(group=>group.words.map(word=>{
+  const card=group.cards?.find(c=>c.word===word);
+  return card&&(card.sentence||card.mask)?[word,card.sentence,card.mask].join(' | '):word;
+ }))},null,2);
+ const status=el('p','');
+ status.setAttribute('role','status');
+ function applyConfig(value){
+  if(value?.version!==1||!Array.isArray(value.groups))throw new Error('Das Dateiformat ist ungültig.');
+  const parsed=value.groups.map(rows=>{
+   if(!Array.isArray(rows)||rows.some(row=>typeof row!=='string'))throw new Error('Jede Gruppe braucht zehn Wortzeilen.');
+   return parseCards(rows.join('\n'));
+  });
+  let added=0;
+  for(const cards of parsed){
+   const i=data.groups.findIndex(group=>group.words.every((word,index)=>word===cards[index].word));
+   if(i<0){data.groups.push(makeGroup(cards));added++;}
+   else data.groups[i]=makeGroup(cards,data.groups[i]);
+  }
+  save();
+  status.textContent=parsed.length+' Gruppen geladen · '+added+' neu.';
+ }
+ button('JSON übernehmen',()=>{
+  try{applyConfig(JSON.parse(output.value));}catch(problem){status.textContent=problem.message;}
+ });
+ button('Von GitHub laden',async(event)=>{
+  event.currentTarget.disabled=true;
+  try{
+   const response=await fetch('./lernwoerter.json',{cache:'no-store'});
+   if(!response.ok)throw new Error('Auf GitHub ist noch keine lernwoerter.json verfügbar.');
+   const config=await response.json();
+   applyConfig(config);
+   output.value=JSON.stringify(config,null,2);
+  }catch(problem){status.textContent=problem.message;}
+  finally{event.currentTarget.disabled=false;}
+ });
+ button('Zu den Lernwortgruppen',()=>open('groups'),el('nav',''));
+}
+let stopReading=()=>{};
+function readingMic(word){
+ const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!Recognition){el('small','Mikrofon-Erkennung ist hier nicht verfügbar. Ihr könnt das Lesen unten bestätigen.');return;}
+ el('small','Die Spracherkennung des Browsers kann Ton zur Verarbeitung an einen Dienst senden. Die App speichert keine Aufnahme.');
+ const status=el('p','');
+ status.setAttribute('role','status');
+ const start=button('🎙 Vorlesen starten',()=>{
+  let recognition;
+  try{
+   recognition=new Recognition();
+   recognition.lang='de-DE';
+   recognition.maxAlternatives=1;
+   stopReading=()=>{recognition.onend=null;recognition.onresult=null;recognition.onerror=null;recognition.abort();};
+   recognition.onresult=event=>{
+    const heard=event.results[0][0].transcript.trim().replace(/[.!?]+$/,'');
+    const matches=heard.toLocaleLowerCase('de')===word.toLocaleLowerCase('de');
+    status.textContent='Verstanden: „'+heard+'“. '+(matches?'Das klingt passend.':'Bitte hört selbst hin und bestätigt unten.');
+   };
+   recognition.onerror=()=>{status.textContent='Das Mikrofon konnte das Wort nicht erkennen. Ihr könnt unten selbst bestätigen.';};
+   recognition.onend=()=>{start.disabled=false;stopReading=()=>{};};
+   recognition.start();start.disabled=true;status.textContent='Ich höre zu …';
+  }catch{stopReading=()=>{};status.textContent='Mikrofon nicht verfügbar. Ihr könnt unten selbst bestätigen.';}
+ });
 }
 let wordReward=false;
 function practice(){
@@ -366,7 +485,7 @@ function practice(){
   el('p','Geschafft! Ihr könnt eine andere Übung oder Gruppe wählen.');
   const nav=el('nav','');
   button('Zu den Übungen',()=>open('wordModes'),nav);
-  button('Mein Puzzle',()=>open('puzzle'),nav,'primary');
+  button('Mein Puzzle',()=>{selectedPiece=null;open('board');},nav,'primary');
   return;
  }
  const word=exerciseWords[wordIndex];
@@ -374,6 +493,7 @@ function practice(){
  if(wordMode==='lesen'){
   el('p','Lies das Wort laut vor.');
   el('p',word,panel,'word');
+  readingMic(word);
   wordFeedback(group,word);
  }else if(wordMode==='luecke'){
   const card=group.cards.find(item=>item.word===word);
@@ -488,6 +608,8 @@ function button(text,fn,parent=panel,cls=''){
  return b;
 }
 function open(next){
+ try{stopReading();}catch{}
+ stopReading=()=>{};
  view=next;
  render();
  panel.querySelector('h1')?.focus();
@@ -510,7 +632,9 @@ function render(){
   return;
  }
  if(view==='words'){wordsView();return;}
- if(view==='puzzle'){puzzleView();return;}
+ if(view==='puzzle'){puzzleList();return;}
+ if(view==='board'){puzzleView();return;}
+ if(view==='configuration'){configuration();return;}
  if(view==='photo'){puzzlePhotoSettings();return;}
  if(view==='groups'){groupEditor();return;}
  if(view==='wordModes'){chooseWordMode();return;}
@@ -647,6 +771,7 @@ function parents(){
  button('Lernprofil erstellen',()=>open('profile'),actions,'primary');
  button('Lernwortgruppen verwalten',()=>open('groups'),actions);
  button('Puzzlebild auswählen',()=>open('photo'),actions);
+ button('Wortgruppen teilen',()=>open('configuration'),actions);
  el('h2','Beobachtungsbogen');
  el('p','Je eine Runde an zwei Tagen, etwa zehn Minuten ohne Stoppuhr. Lest alles vor. Das Kind darf zeigen, sprechen, zeichnen oder pausieren.');
  el('p','In der sachlichen Runde lest ihr bei Aufgabe 6 die Wörter einzeln vor. In der Dino-Runde schaut sich das Kind drei Bilder an und tippt sie nach dem Zudecken in derselben Reihenfolge an. Haltet Wiederholungen und Tipps fest.');
@@ -691,6 +816,7 @@ function parents(){
 open('home');
 </script>
 </html>
+
 
 
 

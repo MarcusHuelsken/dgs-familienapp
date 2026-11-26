@@ -673,6 +673,23 @@ forwardButton.onclick=()=>navigate(1);
 function title(text){const h=el('h1',text);h.tabIndex=-1;}
 document.querySelector('#home').onclick=()=>open('home');
 document.querySelector('#parents').onclick=()=>open('parents');
+function resetLearning(status){
+ if(!window.confirm('Lernwort-Fortschritt und alle Puzzles zurücksetzen? Wortgruppen, Fotos und Denkcheck bleiben erhalten.'))return;
+ const reset={...data,groups:data.groups.map(group=>({...group,results:{},byMode:{},puzzle:{earned:[],placed:[]}}))};
+ delete reset.puzzle;
+ try{localStorage.setItem(key,JSON.stringify(reset));}
+ catch{status.textContent='Der Fortschritt konnte in diesem Browser nicht zurückgesetzt werden.';return;}
+ data=reset;
+ selectedPiece=null;
+ wordIndex=0;
+ wordShown=true;
+ wordReward=false;
+ exerciseWords=[];
+ navigation.length=0;
+ navigationIndex=-1;
+ open('home');
+ panel.querySelector('#reset-status').textContent='Lernwort-Übungen und Puzzles wurden zurückgesetzt.';
+}
 function render(){
  panel.replaceChildren();
  document.body.classList.toggle('dino',view==='round'&&form==='B');
@@ -684,6 +701,11 @@ function render(){
    el('span',activity.label,b);
    el('small',activity.hint,b);
   }
+  const resetNav=el('nav','');
+  button('Übungen und Puzzles zurücksetzen',()=>resetLearning(status),resetNav,'word-retry');
+  const status=el('p','');
+  status.id='reset-status';
+  status.setAttribute('role','status');
   return;
  }
  if(view==='words'){wordsView();return;}
@@ -871,6 +893,7 @@ function parents(){
 open('home');
 </script>
 </html>
+
 
 
 

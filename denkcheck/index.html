@@ -224,7 +224,17 @@ function chooseWordMode(){
  const hints={lesen:'Wörter laut lesen',luecke:'Fehlendes Wort im Satz ergänzen',stellen:'Fehlende Buchstaben antippen',diktat:'Hören, schreiben und prüfen',merken:'Aus dem Kopf auf Papier schreiben'};
  for(const [id,label] of Object.entries(wordModes)){
   const available=group.words.filter(word=>id==='luecke'?group.cards?.find(c=>c.word===word)?.sentence:id==='stellen'?maskFor(group,word):true);
-  const tile=button('',()=>{wordMode=id;exerciseWords=available;wordIndex=0;wordShown=true;open('practice');},tiles,'tile');
+  const tile=button('',()=>{
+   wordMode=id;
+   exerciseWords=[...available];
+   for(let i=exerciseWords.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [exerciseWords[i],exerciseWords[j]]=[exerciseWords[j],exerciseWords[i]];
+   }
+   wordIndex=0;
+   wordShown=true;
+   open('practice');
+  },tiles,'tile');
   el('span',label,tile);el('small',available.length?hints[id]:id==='luecke'?'Erst einen Lückensatz im Elternbereich eintragen':'Erst eine schwierige Stelle eintragen',tile);
   const results=modeResults(group,id);
   const states=available.map(word=>Object.hasOwn(results,word)?results[word]:'');
@@ -512,7 +522,7 @@ function practice(){
  if(wordIndex===exerciseWords.length){
   el('p','Geschafft! Ihr könnt eine andere Übung oder Gruppe wählen.');
   const nav=el('nav','');
-  button('Zu den Übungen',()=>open('wordModes'),nav);
+  button('Fertig',()=>open('wordModes'),nav);
   button('Mein Puzzle',()=>{selectedPiece=null;open('board');},nav,'primary');
   return;
  }
@@ -546,9 +556,6 @@ function practice(){
    },panel,'primary');
   }
  }
- const nav=el('nav','');
- button('Zu den Übungen',()=>open('wordModes'),nav);
- button('Überspringen',nextWord,nav);
 }
 function nextWord(earned){wordReward=earned===true;wordIndex++;wordShown=true;open('practice');}
 function profile(){
@@ -893,6 +900,7 @@ function parents(){
 open('home');
 </script>
 </html>
+
 
 
 

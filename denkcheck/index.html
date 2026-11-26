@@ -448,7 +448,7 @@ function makeGroup(cards,previous){
 }
 function configuration(){
  title('Wortgruppen auf anderen Geräten');
- el('p','Exportiert hier die Wortgruppen als JSON. Legt den Text auf GitHub in denkcheck/lernwoerter.json ab. Auf weiteren Geräten könnt ihr ihn hier laden.');
+ el('p','Speichert die Wortgruppen auf GitHub. Auf weiteren Geräten könnt ihr sie mit „Von GitHub laden“ übernehmen.');
  el('small','Die Gruppen im GitHub-Repo sind öffentlich. Der Export enthält nur Wörter, Sätze und Buchstabenlücken.');
  const output=el('textarea','',el('label','Konfiguration'));
  output.value=JSON.stringify({version:1,groups:data.groups.map(group=>group.words.map(word=>{
@@ -457,12 +457,15 @@ function configuration(){
  }))},null,2);
  const status=el('p','');
  status.setAttribute('role','status');
- function applyConfig(value){
+ function readConfig(value){
   if(value?.version!==1||!Array.isArray(value.groups))throw new Error('Das Dateiformat ist ungültig.');
-  const parsed=value.groups.map(rows=>{
+  return value.groups.map(rows=>{
    if(!Array.isArray(rows)||rows.some(row=>typeof row!=='string'))throw new Error('Jede Gruppe braucht zehn Wortzeilen.');
    return parseCards(rows.join('\n'));
   });
+ }
+ function applyConfig(value){
+  const parsed=readConfig(value);
   let added=0;
   for(const cards of parsed){
    const i=data.groups.findIndex(group=>group.words.every((word,index)=>word===cards[index].word));
@@ -475,6 +478,59 @@ function configuration(){
  button('JSON übernehmen',()=>{
   try{applyConfig(JSON.parse(output.value));}catch(problem){status.textContent=problem.message;}
  });
+ const upload=el('details','');
+ el('summary','Auf GitHub speichern',upload);
+ el('p','Erstellt bei GitHub einen Fine-grained Personal Access Token für dgs-familienapp mit „Contents: Read and write“. Der Token gilt für das Repository. Die Seite verwendet ihn für diesen Upload und leert das Eingabefeld.',upload);
+ const tokenLink=el('a','GitHub-Token erstellen',upload);
+ tokenLink.href='https://github.com/settings/personal-access-tokens/new';
+ tokenLink.target='_blank';
+ tokenLink.rel='noopener noreferrer';
+ const token=el('input','',el('label','GitHub-Token',upload),'answer-input');
+ token.type='password';
+ token.autocomplete='off';
+ token.spellcheck=false;
+ const uploadStatus=el('p','',upload);
+ uploadStatus.setAttribute('role','status');
+ button('Jetzt auf GitHub speichern',async event=>{
+  const credential=token.value.trim();
+  if(!credential){uploadStatus.textContent='GitHub-Token eingeben.';return;}
+  let content;
+  try{
+   const groups=readConfig(JSON.parse(output.value));
+   if(!groups.length)throw new Error('Legt zuerst eine Lernwortgruppe an.');
+   const value={version:1,groups:groups.map(cards=>cards.map(({word,sentence,mask})=>
+    sentence||mask?[word,sentence,mask].join(' | '):word))};
+   const bytes=new TextEncoder().encode(JSON.stringify(value,null,2)+'\n');
+   content=btoa(Array.from(bytes,byte=>String.fromCharCode(byte)).join(''));
+  }catch(problem){uploadStatus.textContent=problem.message;return;}
+  if(!window.confirm('Die Wortgruppen öffentlich auf GitHub speichern und eine vorhandene Wortkonfiguration ersetzen?'))return;
+  token.value='';
+  const action=event.currentTarget;
+  action.disabled=true;
+  uploadStatus.textContent='Wortgruppen werden gespeichert …';
+  try{
+   const endpoint='https://api.github.com/repos/MarcusHuelsken/dgs-familienapp/contents/denkcheck/lernwoerter.json';
+   const headers={Authorization:'Bearer '+credential,Accept:'application/vnd.github+json'};
+   const current=await fetch(endpoint+'?ref=main',{headers,cache:'no-store',redirect:'error'});
+   const body={branch:'main',message:'Update shared learning word groups',content};
+   if(current.ok){
+    body.sha=(await current.json()).sha;
+    if(!body.sha)throw new Error('Die vorhandene Wortkonfiguration konnte nicht gelesen werden.');
+   }else if(current.status!==404){
+    throw new Error('GitHub-Zugriff fehlgeschlagen ('+current.status+'). Prüft den Token.');
+   }
+   const response=await fetch(endpoint,{
+    method:'PUT',headers:{...headers,'Content-Type':'application/json'},
+    body:JSON.stringify(body),redirect:'error'
+   });
+   if(!response.ok){
+    if(response.status===409)throw new Error('Die Datei wurde gerade auf GitHub geändert. Ladet die aktuelle Fassung und versucht es erneut.');
+    throw new Error('GitHub hat das Speichern abgelehnt ('+response.status+'). Prüft Repository und Schreibrechte des Tokens.');
+   }
+   uploadStatus.textContent='Auf GitHub gespeichert. Sobald GitHub Pages die Änderung veröffentlicht hat, könnt ihr sie auf anderen Geräten laden.';
+  }catch(problem){uploadStatus.textContent=problem.message;}
+  finally{action.disabled=false;}
+ },upload,'primary');
  button('Von GitHub laden',async(event)=>{
   event.currentTarget.disabled=true;
   try{
@@ -900,6 +956,7 @@ function parents(){
 open('home');
 </script>
 </html>
+
 
 
 

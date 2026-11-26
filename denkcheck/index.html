@@ -280,6 +280,29 @@ function wordFeedback(group,word){
   button(label,()=>{const earned=markWord(group,word,value);nextWord(earned);},row,value==='solo'?'word-pass':'word-retry');
  }
 }
+function clozeExercise(group,word,sentence){
+ el('p',sentence,panel,'cloze');
+ el('p','Tippe auf das fehlende Wort.');
+ const alternatives=group.words.filter(candidate=>candidate!==word);
+ const pick=()=>alternatives.splice(Math.floor(Math.random()*alternatives.length),1)[0];
+ const choices=[pick(),pick()];
+ choices.splice(Math.floor(Math.random()*3),0,word);
+ const row=el('div','',panel,'row');
+ for(const choice of choices){
+  button(choice,()=>{
+   const correct=choice===word;
+   const earned=markWord(group,word,correct?'solo':'repeat');
+   for(const option of row.querySelectorAll('button')){
+    option.disabled=true;
+    if(option.textContent===word)option.classList.add('word-pass');
+    else if(option.textContent===choice)option.classList.add('word-retry');
+   }
+   const feedback=correct?(earned?'Richtig! 🧩 Ein Puzzleteil für dich.':'Richtig!'):'Hier passt: '+word+'.';
+   el('p',feedback,panel,'result').setAttribute('role','status');
+   button('Weiter',nextWord,panel,'primary').focus();
+  },row);
+ }
+}
 function textExercise(group,word,prompt){
  const form=el('form','');
  const field=el('input','',el('label',prompt,form),'answer-input');
@@ -502,8 +525,7 @@ function practice(){
   wordFeedback(group,word);
  }else if(wordMode==='luecke'){
   const card=group.cards.find(item=>item.word===word);
-  el('p',card.sentence,panel,'cloze');
-  textExercise(group,word,'Welches Wort fehlt?');
+  clozeExercise(group,word,card.sentence);
  }else if(wordMode==='stellen'){
   el('p','Tippe die fehlenden Buchstaben in der richtigen Reihenfolge an.');
   letterExercise(group,word,maskFor(group,word));
@@ -849,6 +871,7 @@ function parents(){
 open('home');
 </script>
 </html>
+
 
 
 

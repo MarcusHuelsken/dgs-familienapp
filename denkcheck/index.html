@@ -36,9 +36,14 @@
 .piece-tray button[aria-pressed=true]{outline:4px solid #286650;outline-offset:1px}
 .puzzle-preview{display:block;width:min(100%,230px);height:auto;margin:10px auto;border-radius:10px}
 .tiles .tile.progress{background:linear-gradient(180deg,#d0efd9 0 var(--done),#f8dee0 var(--done) var(--tried),#eff2f6 var(--tried) 100%)}
+
+.top-arrows{display:flex;gap:4px;margin:0}.top-arrows button{padding:6px;min-width:44px;font-size:22px}
+header{gap:4px}header>button{padding-inline:9px}
+button.word-pass{color:#145232;background:#d0efd9;border-color:#307b51}
+button.word-retry{color:#7b2533;background:#f8dee0;border-color:#a64955}
 </style>
 <main>
-<header><button id="home">Übersicht</button><button id="parents">Für Eltern</button></header>
+<header><button id="home">Übersicht</button><nav class="top-arrows" aria-label="Navigation"><button id="back" type="button" aria-label="Zurück" disabled>←</button><button id="forward" type="button" aria-label="Vor" disabled>→</button></nav><button id="parents">Für Eltern</button></header>
 <article id="screen"></article>
 </main>
 <script>
@@ -233,7 +238,7 @@ function chooseWordMode(){
   }
   tile.disabled=!available.length;
  }
- el('small','Grün: selbst geschafft · Rosa: mit Hilfe oder noch üben · Grau: offen');
+ el('small','Grün: selbst geschafft · Rosa: noch mal üben · Grau: offen');
  el('small','Für alle fünf Lückentext-Teile braucht jedes der zehn Wörter einen Lückensatz.');
  const nav=el('nav','');
  button('Zu den Gruppen',()=>open('words'),nav);
@@ -271,8 +276,8 @@ function markWord(group,word,result){
 }
 function wordFeedback(group,word){
  const row=el('div','',panel,'row');
- for(const [value,label] of [['solo','Selbst geschafft'],['help','Mit Hilfe'],['repeat','Noch mal üben']]){
-  button(label,()=>{const earned=markWord(group,word,value);nextWord(earned);},row);
+ for(const [value,label] of [['solo','✓ Geschafft'],['repeat','↻ Noch mal üben']]){
+  button(label,()=>{const earned=markWord(group,word,value);nextWord(earned);},row,value==='solo'?'word-pass':'word-retry');
  }
 }
 function textExercise(group,word,prompt){
@@ -542,18 +547,18 @@ function profile(){
   }
   report.push('Lieblingsrätsel: '+(data[f].fun||'offen'));
  }
- const words={solo:[],help:[],repeat:[]};
+ const words={solo:[],repeat:[]};
  data.groups.forEach((group,i)=>{
   report.push('','Gruppe '+(i+1));
   for(const w of group.words){
-   const labels={solo:'selbst geschafft',help:'mit Hilfe',repeat:'noch mal üben'};
+   const labels={solo:'selbst geschafft',help:'noch mal üben',repeat:'noch mal üben'};
    const attempts=[];
    for(const [id,label] of Object.entries(wordModes)){
     const results=id==='merken'?group.results:group.byMode?.[id]||{};
     if(Object.hasOwn(results,w))attempts.push([label,results[w]]);
    }
-   const statuses=attempts.map(([,status])=>status);
-   const priority=['repeat','help','solo'].find(status=>statuses.includes(status));
+   const statuses=attempts.map(([,status])=>status==='help'?'repeat':status);
+   const priority=['repeat','solo'].find(status=>statuses.includes(status));
    if(priority)words[priority].push(w);
    report.push(w+' – '+(attempts.map(([label,status])=>label+': '+labels[status]).join(' · ')||'noch offen'));
 
@@ -564,9 +569,9 @@ function profile(){
   if(items.length)el('p',label+' · '+items.join(', '),observations);
  }
  if(!observations.childElementCount)el('p','Für den Denkcheck ist noch keine Einschätzung eingetragen.',observations);
- el('p','Lernwörter · '+words.solo.length+' selbst geschafft, '+words.help.length+' mit Hilfe, '+words.repeat.length+' zum Wiederholen.',observations);
+ el('p','Lernwörter · '+words.solo.length+' selbst geschafft, '+words.repeat.length+' zum Wiederholen.',observations);
  const favorite=data.B.fun||data.A.fun;
- const practiceWords=[...new Set([...words.repeat,...words.help])].slice(0,3);
+ const practiceWords=[...new Set(words.repeat)].slice(0,3);
  const plan=[];
  if(favorite)plan.push('Mit „'+favorite+'“ einsteigen.');
  else if(easy.length)plan.push('Mit einem kurzen Rätsel wie „'+easy[0]+'“ einsteigen.');
@@ -607,14 +612,42 @@ function button(text,fn,parent=panel,cls=''){
  b.addEventListener('click',fn);
  return b;
 }
+const backButton=document.querySelector('#back');
+const forwardButton=document.querySelector('#forward');
+const navigation=[];
+let navigationIndex=-1;
 function open(next){
+ const page={view:next,form,groupIndex,wordIndex,wordMode,wordShown,exerciseWords,memoryOpen,roundIndex:data[form].i};
+ const current=navigation[navigationIndex];
+ if(!current||Object.keys(page).some(key=>page[key]!==current[key])){
+  navigation.splice(navigationIndex+1);
+  navigation.push(page);
+  navigationIndex=navigation.length-1;
+ }
+ showPage(next);
+}
+function showPage(next){
  try{stopReading();}catch{}
  stopReading=()=>{};
  view=next;
  render();
+ backButton.disabled=navigationIndex<=0;
+ forwardButton.disabled=navigationIndex>=navigation.length-1;
  panel.querySelector('h1')?.focus();
  window.scrollTo(0,0);
 }
+function navigate(offset){
+ const index=navigationIndex+offset;
+ const page=navigation[index];
+ if(!page)return;
+ navigationIndex=index;
+ ({form,groupIndex,wordIndex,wordMode,wordShown,exerciseWords,memoryOpen}=page);
+ if(page.view==='round')data[form].i=page.roundIndex;
+ selectedPiece=null;
+ showPage(page.view);
+}
+backButton.onclick=()=>navigate(-1);
+forwardButton.onclick=()=>navigate(1);
 function title(text){const h=el('h1',text);h.tabIndex=-1;}
 document.querySelector('#home').onclick=()=>open('home');
 document.querySelector('#parents').onclick=()=>open('parents');
@@ -816,6 +849,7 @@ function parents(){
 open('home');
 </script>
 </html>
+
 
 
 

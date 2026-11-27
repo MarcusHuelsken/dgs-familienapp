@@ -388,6 +388,7 @@ function groupEditor(){
   const box=el('fieldset','');
   el('legend','Gruppe '+(i+1),box);
   el('p',group.words.join(' · '),box,'word-list');
+  button('Puzzlebild auswählen',()=>{groupIndex=i;open('photo');},box);
   const editor=el('details','',box);
   el('summary','Gruppe bearbeiten',editor);
   groupForm(editor,i);
@@ -449,30 +450,48 @@ function makeGroup(cards,previous){
 function configuration(){
  title('Wortgruppen auf anderen Geräten');
  el('p','Speichert die Wortgruppen auf GitHub. Auf weiteren Geräten könnt ihr sie mit „Von GitHub laden“ übernehmen.');
- el('small','Die Gruppen im GitHub-Repo sind öffentlich. Der Export enthält nur Wörter, Sätze und Buchstabenlücken.');
+ el('small','Wortgruppen und gewählte Puzzlebilder sind nach dem Upload öffentlich im GitHub-Repository. Lernfortschritt bleibt auf diesem Gerät.');
  const output=el('textarea','',el('label','Konfiguration'));
- output.value=JSON.stringify({version:1,groups:data.groups.map(group=>group.words.map(word=>{
-  const card=group.cards?.find(c=>c.word===word);
-  return card&&(card.sentence||card.mask)?[word,card.sentence,card.mask].join(' | '):word;
+ function wordRows(cards){
+  return cards.map(({word,sentence,mask})=>sentence||mask?[word,sentence||'',mask||''].join(' | '):word);
+ }
+ output.value=JSON.stringify({version:2,groups:data.groups.map(group=>({
+  rows:wordRows(group.words.map(word=>group.cards?.find(card=>card.word===word)||{word})),
+  photo:Object.hasOwn(group,'photo')?group.photo:defaultPhoto
  }))},null,2);
  const status=el('p','');
  status.setAttribute('role','status');
  function readConfig(value){
-  if(value?.version!==1||!Array.isArray(value.groups))throw new Error('Das Dateiformat ist ungültig.');
-  return value.groups.map(rows=>{
+  if(![1,2].includes(value?.version)||!Array.isArray(value.groups))throw new Error('Das Dateiformat ist ungültig.');
+  return value.groups.map(entry=>{
+   const rows=value.version===1?entry:entry?.rows;
    if(!Array.isArray(rows)||rows.some(row=>typeof row!=='string'))throw new Error('Jede Gruppe braucht zehn Wortzeilen.');
-   return parseCards(rows.join('\n'));
+   const cards=parseCards(rows.join('\n'));
+   if(value.version===1)return {cards};
+   const photo=entry.photo;
+   if(photo===null)return {cards,photo};
+   if(typeof photo?.url!=='string'||!/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(photo.url)||
+    typeof photo.ratio!=='string'||!/^[1-9][0-9]{0,3}\/[1-9][0-9]{0,3}$/.test(photo.ratio)){
+    throw new Error('Ein Puzzlebild hat ein ungültiges Format. Wählt es erneut über „Puzzlebild auswählen“.');
+   }
+   return {cards,photo:{url:photo.url,ratio:photo.ratio}};
   });
  }
  function applyConfig(value){
   const parsed=readConfig(value);
+  const groups=[...data.groups];
   let added=0;
-  for(const cards of parsed){
-   const i=data.groups.findIndex(group=>group.words.every((word,index)=>word===cards[index].word));
-   if(i<0){data.groups.push(makeGroup(cards));added++;}
-   else data.groups[i]=makeGroup(cards,data.groups[i]);
+  for(const {cards,photo} of parsed){
+   const i=groups.findIndex(group=>group.words.every((word,index)=>word===cards[index].word));
+   const group=makeGroup(cards,groups[i]);
+   if(photo!==undefined)group.photo=photo;
+   if(i<0){groups.push(group);added++;}
+   else groups[i]=group;
   }
-  save();
+  const next={...data,groups};
+  try{localStorage.setItem(key,JSON.stringify(next));}
+  catch{throw new Error('Die Gruppenkonfiguration passt nicht in den Browserspeicher oder der Speicher ist nicht verfügbar.');}
+  data=next;
   status.textContent=parsed.length+' Gruppen geladen · '+added+' neu.';
  }
  button('JSON übernehmen',()=>{
@@ -494,20 +513,21 @@ function configuration(){
  button('Jetzt auf GitHub speichern',async event=>{
   const credential=token.value.trim();
   if(!credential){uploadStatus.textContent='GitHub-Token eingeben.';return;}
-  let content;
+  let content,imageCount;
   try{
    const groups=readConfig(JSON.parse(output.value));
    if(!groups.length)throw new Error('Legt zuerst eine Lernwortgruppe an.');
-   const value={version:1,groups:groups.map(cards=>cards.map(({word,sentence,mask})=>
-    sentence||mask?[word,sentence,mask].join(' | '):word))};
+   imageCount=groups.filter(group=>group.photo).length;
+   const value={version:2,groups:groups.map(({cards,photo})=>({rows:wordRows(cards),photo:photo??null}))};
    const bytes=new TextEncoder().encode(JSON.stringify(value,null,2)+'\n');
+   if(bytes.length>900000)throw new Error('Die Konfiguration ist zu groß. Wählt weniger oder kleinere Puzzlebilder.');
    content=btoa(Array.from(bytes,byte=>String.fromCharCode(byte)).join(''));
   }catch(problem){uploadStatus.textContent=problem.message;return;}
-  if(!window.confirm('Die Wortgruppen öffentlich auf GitHub speichern und eine vorhandene Wortkonfiguration ersetzen?'))return;
+  if(!window.confirm('Die Wortgruppen und '+imageCount+' Puzzlebild(er) öffentlich auf GitHub speichern und die bisherige Konfiguration ersetzen?'))return;
   token.value='';
   const action=event.currentTarget;
   action.disabled=true;
-  uploadStatus.textContent='Wortgruppen werden gespeichert …';
+  uploadStatus.textContent='Wortgruppen und Puzzlebilder werden gespeichert …';
   try{
    const endpoint='https://api.github.com/repos/MarcusHuelsken/dgs-familienapp/contents/denkcheck/lernwoerter.json';
    const headers={Authorization:'Bearer '+credential,Accept:'application/vnd.github+json'};
@@ -956,6 +976,7 @@ function parents(){
 open('home');
 </script>
 </html>
+
 
 
 
